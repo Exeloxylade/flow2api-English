@@ -353,6 +353,12 @@ async def test_page(request: Request):
     return HTMLResponse(content="<h1>Test Page Not Found</h1>", status_code=404)
 
 
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_page():
+    """Local English setup guide; contains no account data."""
+    return _static_page_response(static_path / "setup.html")
+
+
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint for the main Flow2API service."""

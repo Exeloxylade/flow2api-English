@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en-US">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -76,23 +76,23 @@
   <div class="wrap">
     <div class="panel">
       <h1>Flow2API Captcha Worker</h1>
-      <p>给当前浏览器实例设置一个独立的路由键，Flow2API 后端就能把对应账号的验证码请求固定发到这个实例。</p>
+      <p>Set a unique route key so Flow2API can send the matching account's captcha requests to this browser instance.</p>
 
       <label for="routeKey">Route Key</label>
-      <input id="routeKey" type="text" placeholder="例如 9223">
+      <input id="routeKey" type="text" placeholder="e.g. 9223">
 
       <label for="clientLabel">Client Label</label>
-      <input id="clientLabel" type="text" placeholder="例如 browser-9223">
+      <input id="clientLabel" type="text" placeholder="e.g. browser-9223">
 
       <label for="serverUrl">WebSocket URL</label>
       <input id="serverUrl" type="text" placeholder="ws://127.0.0.1:8000/captcha_ws">
 
       <label for="apiKey">Flow2API API Key</label>
-      <input id="apiKey" type="password" placeholder="管理后台里的 API Key">
+      <input id="apiKey" type="password" placeholder="API key from the admin panel">
 
-      <button id="saveBtn" type="button">保存</button>
+      <button id="saveBtn" type="button">Save</button>
       <div class="status" id="status"></div>
-      <div class="hint">管理台 token 里填写同样的 <code>Route Key</code>，比如 9223 对 9223。后端会使用 API Key 校验 WebSocket 连接。</div>
+      <div class="hint">Use the same <code>Route Key</code> in the account settings, for example 9223 in both places. The server authenticates the WebSocket connection with the API key.</div>
     </div>
   </div>
   <script src="options.js"></script>

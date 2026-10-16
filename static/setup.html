@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Setup guide · Flow2API English</title>
+  <style>
+    body{margin:0;background:#f8fafc;color:#172033;font:16px/1.65 system-ui,sans-serif}main{max-width:840px;margin:auto;padding:32px 24px 64px}nav{display:flex;gap:24px;flex-wrap:wrap}a{color:#2455b8}h1{font-size:36px;line-height:1.2}h2{margin-top:32px;font-size:23px}li{margin:10px 0}code{background:#e9eef5;border-radius:4px;padding:2px 5px;overflow-wrap:anywhere}.note{background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:16px 20px}dt{font-weight:650;margin-top:12px}dd{margin-left:0}strong{font-weight:650}
+  </style>
+</head>
+<body><main>
+  <nav><a href="/manage">Back to accounts</a><a href="/test">Test a model</a><a href="https://github.com/Exeloxylade/flow2api-English">English source</a></nav>
+  <h1>Connect Google Flow to Bang Story</h1>
+  <p>Flow2API is a community server that uses your own Google Flow session. Start with one account and one image model.</p>
+  <h2>1. Install and start from Bang Story</h2>
+  <ol>
+    <li>Open <strong>Pengaturan → Flow2API</strong> and enable <strong>Gunakan Flow2API lokal</strong>.</li>
+    <li>Click <strong>Pasang Flow2API</strong> (or <strong>Pasang ulang</strong> to update an older installation), then wait for Python, server dependencies, and Chromium to finish installing.</li>
+    <li>Click <strong>Jalankan dan login</strong>, then <strong>Buka panel akun</strong>. Bang Story signs in to the local admin panel automatically.</li>
+  </ol>
+  <p>The Bang Story server runs at <code>http://127.0.0.1:8765</code>. A separately installed Flow2API server normally uses port <code>8000</code>.</p>
+  <h2>2. Connect your Google Flow account</h2>
+  <ol>
+    <li>Open <code>https://flow.google.com</code> in a browser and sign in to the Google account you want to use. Confirm that Flow works with that account.</li>
+    <li>Press <strong>F12 → Network</strong>, reload Flow, and select the document request to <code>flow.google.com</code>. In <strong>Headers → Request Headers</strong>, copy the full <strong>Cookie</strong> value. A JSON cookie export containing the Flow and Google domains is also supported.</li>
+    <li>Return to <strong>Accounts → Add</strong>. Paste into <strong>Google Cookies</strong> and enter the matching email in <strong>Google Account</strong>. Leave project and proxy fields empty unless you need them, then click <strong>Add</strong>.</li>
+    <li>Confirm that the account appears and is enabled. If validation fails, sign in again and copy fresh, complete cookies.</li>
+  </ol>
+  <div class="note"><strong>This version needs complete cookies.</strong> Include a Flow session cookie (<code>OSID</code> or <code>__Secure-OSID</code>) and Google account cookies such as <code>SID</code>/<code>SAPISID</code>. An old <code>__Secure-next-auth.session-token</code> alone will not work. Cookies grant access to your session: paste them only into your own server and do not share them in screenshots or support messages.</div>
+  <h2>3. Check the connection in Bang Story</h2>
+  <ol>
+    <li>Return to Bang Story and click <strong>Periksa akun</strong>.</li>
+    <li>When connected, click <strong>Gunakan untuk proyek baru</strong>. For an existing project, choose <strong>Flow2API</strong> and image/video models in <strong>Ide cerita</strong>.</li>
+    <li>Try one image first. An account check does not generate media or prove that generation quota is available.</li>
+  </ol>
+  <h2>Which key goes where?</h2>
+  <dl>
+    <dt>Google Cookies</dt><dd>Google sign-in cookies, entered in the account dialog.</dd>
+    <dt>Flow2API API key</dt><dd>The key used by applications calling the server. Bang Story manages it automatically in local mode. For an external server, use its API key in Bang Story.</dd>
+    <dt>Admin password</dt><dd>Signs in to the admin panel. Bang Story manages this automatically for its local server.</dd>
+    <dt>Gemini API key</dt><dd>A separate credential for Bang Story's Gemini story or narration provider. It is not a Flow2API key.</dd>
+  </dl>
+  <h2>Common problems</h2>
+  <ul>
+    <li><strong>Panel is still Chinese:</strong> update Bang Story, stop the local server, click <strong>Pasang ulang</strong>, then start it again. Updating Bang Story alone does not replace an already installed server.</li>
+    <li><strong>Missing or expired cookies:</strong> sign in again, copy the complete current cookies, and edit the account.</li>
+    <li><strong>Account connected but generation fails:</strong> check Google Flow access, quota, selected model, and browser/captcha status. In Bang Story local mode, the browser method is managed automatically.</li>
+    <li><strong>Standalone setup:</strong> follow the English README. Use your own admin password and API key, and bind to localhost for a local installation.</li>
+  </ul>
+  <p>Original project: <a href="https://github.com/TheSmallHanCat/flow2api">TheSmallHanCat/flow2api</a>. English fork: <a href="https://github.com/Exeloxylade/flow2api-English">Exeloxylade/flow2api-English</a>. MIT license and original attribution retained.</p>
+</main></body></html>
