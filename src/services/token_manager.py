@@ -17,6 +17,36 @@ from .proxy_manager import ProxyManager
 class TokenManager:
     """Token lifecycle manager with AT auto-refresh"""
 
+    async def save_verified_browser_account(self, email, google_cookies, *, existing=None):
+        """Persist an identity already verified by browser_accounts, without generation RPCs.
+
+        Credits and project creation are not proof of login. Projects are prepared by
+        ensure_project_exists on first generation, so their failures must not discard login.
+        """
+        from .browser_cookie_utils import validate_flow_cookie_storage
+        validate_flow_cookie_storage(google_cookies)
+        expires = datetime.now(timezone.utc) + timedelta(minutes=55)
+        marker = "frontend-" + hashlib.sha256(google_cookies.encode("utf-8")).hexdigest()[:32]
+        if existing:
+            await self.update_token(
+                existing.id, st=marker, at=FlowClient.FRONTEND_ACCESS_TOKEN,
+                at_expires=expires, email=email, login_account=email,
+                google_cookies=google_cookies, protocol_mode="protocol",
+                auto_refresh_enabled=True, refresh_interval_minutes=120,
+            )
+            if not existing.is_active:
+                await self.enable_token(existing.id)
+            return await self.get_token(existing.id)
+        account = Token(
+            st=marker, at=FlowClient.FRONTEND_ACCESS_TOKEN, at_expires=expires,
+            email=email, name=email.split('@')[0], login_account=email,
+            google_cookies=google_cookies, protocol_mode="protocol",
+            remark="Connected from browser", auto_refresh_enabled=True,
+            refresh_interval_minutes=120,
+        )
+        account.id = await self.db.add_token(account)
+        return account
+
     def __init__(self, db: Database, flow_client: FlowClient):
         self.db = db
         self.flow_client = flow_client

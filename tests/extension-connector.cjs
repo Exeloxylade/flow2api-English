@@ -8,7 +8,7 @@ function fixture() {
   const sandbox = {URL, AbortSignal}
   vm.runInNewContext(source, sandbox)
   const calls = []
-  const state = {url: 'https://flow.google.com/projects', email: 'owner@example.com', code: 200}
+  const state = {url: 'https://flow.google.com/projects', email: 'owner@example.com', code: 200, error_code: 'pairing_invalid'}
   const api = {
     tabs: {query: async () => [{id: 7, url: state.url}]},
     scripting: {executeScript: async () => [{result: {host: 'flow.google.com', email: state.email}}]},
@@ -20,7 +20,7 @@ function fixture() {
       }
     }
   }
-  const fetcher = async (url, options) => {calls.push({url, options}); return {ok: state.code === 200, status: state.code, json: async () => ({success: true, account: {id: 3, email: state.email}})}}
+  const fetcher = async (url, options) => {calls.push({url, options}); return {ok: state.code === 200, status: state.code, json: async () => state.code === 200 ? {success: true, account: {id: 3, email: state.email}} : {error_code: state.error_code, detail: 'private-session-data'}}}
   return {connector: sandbox.flowConnector, api, fetcher, state, calls, code: '8765:' + 'a'.repeat(64)}
 }
 test('connector reads the active browser profile only on explicit connect and sends only to loopback', async () => {
@@ -51,5 +51,13 @@ test('an unsigned-in page does not export cookies and expired pairing gives a fi
   assert.equal(f.calls.length, 0)
   f.state.email = 'owner@example.com'
   f.state.code = 409
-  await assert.rejects(f.connector.connect(f.code, f.api, f.fetcher), /Pairing expired/)
+  await assert.rejects(f.connector.connect(f.code, f.api, f.fetcher), /already used/)
+})
+test('accepted-code verification failures are distinct from expiry and server text cannot leak credentials', async () => {
+  const f = fixture()
+  f.state.code = 409
+  f.state.error_code = 'flow_signin_redirect'
+  await assert.rejects(f.connector.connect(f.code, f.api, f.fetcher), error => /pairing code was accepted/.test(error.message) && !error.message.includes('private-'))
+  f.state.error_code = '__proto__'
+  await assert.rejects(f.connector.connect(f.code, f.api, f.fetcher), error => /specific failure reason/.test(error.message) && !error.message.includes('private-'))
 })

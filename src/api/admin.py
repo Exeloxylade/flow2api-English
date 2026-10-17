@@ -42,7 +42,7 @@ from ..services.proxy_manager import ProxyManager
 from ..services.concurrency_manager import ConcurrencyManager
 from ..services.browser_accounts import BrowserSessionError, register_browser_session
 from ..services.dashboard_login import DashboardSetupError
-from ..services.extension_login import ExtensionLogin
+from ..services.extension_login import ExtensionLogin, ExtensionConnectionError
 
 try:
     import httpx
@@ -1211,9 +1211,12 @@ async def dashboard_login_start(request: Request, body: DashboardConnectRequest,
                 token_manager, db, email=identity, google_cookies=cookies,
                 expected_account_id=account_id, concurrency_manager=concurrency_manager,
             )
-            await db.update_captcha_config(captcha_method="personal")
-            await db.update_token_refresh_config(enabled=True)
-            await db.reload_config_to_memory()
+            try:
+                await db.update_captcha_config(captcha_method="personal")
+                await db.update_token_refresh_config(enabled=True)
+                await db.reload_config_to_memory()
+            except Exception:
+                raise BrowserSessionError("The account was saved, but local configuration could not be updated.", "local_configuration_failed") from None
             return result
 
     try:
@@ -1254,6 +1257,8 @@ async def extension_login_submit(request: Request, body: BrowserSessionRequest):
         raise HTTPException(status_code=422, detail='The app controls the reconnect target')
     try:
         return await dashboard_login.submit(authorization[7:], body.login_account, body.google_cookies)
+    except ExtensionConnectionError as exc:
+        return JSONResponse(status_code=409, content={'detail': str(exc), 'error_code': exc.code})
     except DashboardSetupError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
 

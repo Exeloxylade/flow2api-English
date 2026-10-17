@@ -27,7 +27,26 @@ globalThis.flowConnector = {
       body: JSON.stringify({login_account: identity.email, google_cookies: JSON.stringify(cookies)}),
       signal: AbortSignal.timeout(125000)
     });
-    if (!response.ok) throw new FlowConnectorError(response.status === 401 || response.status === 409 ? 'Pairing expired, was cancelled, or could not verify this account. Create a fresh code in the app and retry.' : 'Flow2API could not accept the account. Check its dashboard and try again.');
+    if (!response.ok) {
+      const problem = await response.json().catch(() => ({}));
+      const messages = {
+        pairing_invalid: 'The code is expired, cancelled, or already used. Copy a NEW code from Bang Story, then retry once.',
+        account_mismatch: 'Flow2API sees a different Google account. Use a browser profile signed in to the intended Flow account.',
+        cookies_incomplete: 'The session is incomplete. Open your signed-in Flow studio before connecting.',
+        flow_signin_redirect: 'Google rejected the transferred session and redirected Flow2API to sign-in. The pairing code was accepted.',
+        flow_http_error: 'Google Flow rejected verification from the local server. Check Flow access and the server network.',
+        flow_frontend_changed: 'Flow2API received an unexpected Flow page. The server needs a compatibility update.',
+        flow_identity_missing: 'Flow2API could not verify an account in the returned Flow page. Open the creative studio and reconnect.',
+        flow_network_error: 'The local server could not reach Google Flow. Check its internet connection or proxy.',
+        account_save_failed: 'The account was verified, but Flow2API could not save it. Check local disk space.',
+        verification_timeout: 'Flow verification timed out. Check the server connection and create a new code.',
+        account_setup_failed: 'The pairing code was accepted, but local account setup failed. Update Flow2API and retry with a new code.',
+        local_configuration_failed: 'The account was saved, but server settings failed to update. Restart Flow2API and check the account list.',
+        account_verification_failed: 'The code was accepted, but Google Flow did not verify the session. Open the intended Flow studio and create a new code.'
+      };
+      const message = Object.hasOwn(messages, problem.error_code) ? messages[problem.error_code] : response.status === 401 ? messages.pairing_invalid : 'Flow2API did not return a specific failure reason. Update the app and server, create a new code, and retry once.';
+      throw new FlowConnectorError(message);
+    }
     const value = await response.json();
     if (!value.success) throw new FlowConnectorError('The account was not connected. Check the app and retry.');
     return value.account;

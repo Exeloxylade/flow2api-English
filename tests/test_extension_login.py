@@ -8,6 +8,7 @@ import httpx
 from fastapi import FastAPI
 from src.api import admin
 from src.services.extension_login import ExtensionLogin, DashboardSetupError
+from src.services.browser_accounts import BrowserSessionError
 
 EMAIL = 'owner@example.com'
 RESULT = {'success': True, 'account': {'id': 3, 'email': EMAIL, 'enabled': True}}
@@ -101,6 +102,15 @@ class ExtensionApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('private-', response.text)
         response = await self.client.post('/api/browser-login/extension', headers=self.headers, json=self.body)
         self.assertEqual(response.status_code, 409)
+
+    async def test_verification_failure_is_distinct_from_reusing_the_consumed_pairing(self):
+        self.register.side_effect = BrowserSessionError('private-cookie-data', 'flow_signin_redirect')
+        response = await self.client.post('/api/browser-login/extension', headers=self.headers, json=self.body)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()['error_code'], 'flow_signin_redirect')
+        self.assertNotIn('private-', response.text)
+        response = await self.client.post('/api/browser-login/extension', headers=self.headers, json=self.body)
+        self.assertEqual(response.json()['error_code'], 'pairing_invalid')
 
     async def test_foreign_or_missing_origins_and_rebinding_hosts_are_denied(self):
         for origin in ['https://flow.google.com', 'https://attacker.example', 'chrome-extension://invalid']:
