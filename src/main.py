@@ -128,10 +128,11 @@ async def lifespan(app: FastAPI):
 
     # 尽量在浏览器服务启动前就拿到 token 快照，后续并发管理和预热共用。
     tokens = await token_manager.get_all_tokens()
+    local_browser_tokens = [token for token in tokens if token.is_active and not token.browser_bridge_hash]
 
     # Initialize browser captcha service if needed
     browser_service = None
-    if captcha_config.captcha_method == "personal" and tokens and not (os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET") or os.environ.get("FLOW_DEFER_BROWSER_WARMUP")):
+    if captcha_config.captcha_method == "personal" and local_browser_tokens and not (os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET") or os.environ.get("FLOW_DEFER_BROWSER_WARMUP")):
         from .services.browser_captcha_personal import (
             BrowserCaptchaService,
             PERSONAL_POOL_MAX_TOTAL_RESIDENT_TABS,
@@ -153,7 +154,7 @@ async def lifespan(app: FastAPI):
             ),
         )
         warmup_project_ids = await token_manager.get_personal_warmup_project_ids(
-            tokens=tokens,
+            tokens=local_browser_tokens,
             limit=warmup_limit,
         )
 
@@ -180,7 +181,7 @@ async def lifespan(app: FastAPI):
             # 没有任何可用 token 时，打开登录窗口供用户手动操作
             await browser_service.open_login_window()
             print("No active token found, opened login window for manual setup")
-    elif captcha_config.captcha_method == "browser" and tokens and not (os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET") or os.environ.get("FLOW_DEFER_BROWSER_WARMUP")):
+    elif captcha_config.captcha_method == "browser" and local_browser_tokens and not (os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET") or os.environ.get("FLOW_DEFER_BROWSER_WARMUP")):
         from .services.browser_captcha import BrowserCaptchaService
 
         browser_service = await BrowserCaptchaService.get_instance(db)
@@ -190,10 +191,10 @@ async def lifespan(app: FastAPI):
     # Initialize concurrency manager
     await concurrency_manager.initialize(tokens)
 
-    if config.captcha_method == "remote_browser":
+    if config.captcha_method == "remote_browser" and local_browser_tokens:
         try:
             warmed_projects = await flow_client.prefill_remote_browser_for_tokens(
-                tokens, action="IMAGE_GENERATION"
+                local_browser_tokens, action="IMAGE_GENERATION"
             )
             print(
                 f"Remote browser pool prefill started for {warmed_projects} project(s)"
@@ -372,7 +373,7 @@ async def connector_download():
     folder = Path(__file__).resolve().parent.parent / 'browser-extension'
     bundle = io.BytesIO()
     with zipfile.ZipFile(bundle, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for name in ('manifest.json', 'popup.html', 'popup.css', 'connector.js', 'popup.js', 'README.md'):
+        for name in ('manifest.json', 'popup.html', 'popup.css', 'connector.js', 'popup.js', 'background.js', 'page-bridge.js', 'README.md'):
             archive.write(folder / name, 'Flow-Account-Connector/' + name)
     return Response(bundle.getvalue(), media_type='application/zip', headers={
         'Content-Disposition': 'attachment; filename="Flow-Account-Connector.zip"',

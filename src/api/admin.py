@@ -8,7 +8,7 @@ import importlib
 import sys
 import json
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
@@ -38,6 +38,7 @@ from ..core.browser_runtime_status import (
 )
 from ..core.monitoring import build_public_health_snapshot
 from ..services.token_manager import TokenManager
+from ..services.browser_bridge import browser_bridge
 from ..services.proxy_manager import ProxyManager
 from ..services.concurrency_manager import ConcurrencyManager
 from ..services.browser_accounts import BrowserSessionError, register_browser_session
@@ -704,6 +705,7 @@ class BrowserSessionRequest(BaseModel):
     google_cookies: str = Field(min_length=1, max_length=524288)
     login_account: str = Field(min_length=3, max_length=254)
     expected_account_id: Optional[int] = Field(default=None, gt=0, strict=True)
+    use_browser_bridge: bool = False
 
     @field_validator("login_account")
     @classmethod
@@ -1072,6 +1074,8 @@ async def get_tokens(token: str = Depends(verify_admin_token)):
         "captcha_proxy_url": row.get("captcha_proxy_url") or "",
         "extension_route_key": row.get("extension_route_key") or "",
         "protocol_mode": row.get("protocol_mode") or "session",
+        "browser_bridge": bool(row.get("browser_bridge_hash")),
+        "browser_connected": bool(row.get("browser_bridge_hash")) and browser_bridge.is_online(row["id"]),
         "google_cookies": row.get("google_cookies") or "",
         "login_account": row.get("login_account") or "",
         "login_password": row.get("login_password") or "",
@@ -1208,12 +1212,13 @@ async def dashboard_login_start(request: Request, body: DashboardConnectRequest,
             raise HTTPException(status_code=404, detail="This account no longer exists. Refresh the dashboard")
         email = str(existing.login_account or existing.email).strip().lower()
 
-    async def register(identity, cookies, account_id, browser_identity=False):
+    async def register(identity, cookies, account_id, browser_identity=False, live_bridge=False):
         async with browser_registration_lock:
             result = await register_browser_session(
                 token_manager, db, email=identity, google_cookies=cookies,
                 expected_account_id=account_id, concurrency_manager=concurrency_manager,
                 trust_browser_identity=browser_identity,
+                live_browser=live_bridge,
             )
             try:
                 await db.update_captcha_config(captcha_method="personal")
@@ -1260,11 +1265,69 @@ async def extension_login_submit(request: Request, body: BrowserSessionRequest):
     if body.expected_account_id is not None:
         raise HTTPException(status_code=422, detail='The app controls the reconnect target')
     try:
-        return await dashboard_login.submit(authorization[7:], body.login_account, body.google_cookies)
+        result = await dashboard_login.submit(authorization[7:], body.login_account, body.google_cookies, live_bridge=body.use_browser_bridge)
+        if body.use_browser_bridge and result.get("success"):
+            secret = secrets.token_hex(32)
+            account_id = result["account"]["id"]
+            await db.update_token(
+                account_id, browser_bridge_hash=hashlib.sha256(secret.encode()).hexdigest(),
+                credits_updated_at=None, user_paygate_tier=None,
+                last_st_refresh_at=datetime.now(timezone.utc),
+                last_st_refresh_result="Paired browser session", is_active=True,
+            )
+            await browser_bridge.revoke(account_id)
+            # The persistent capability goes only to this pairing response, never
+            # into the dashboard's polled login result or account export.
+            return {**result, "browser_bridge": {"account_id": account_id, "secret": secret}}
+        return result
     except ExtensionConnectionError as exc:
         return JSONResponse(status_code=409, content={'detail': str(exc), 'error_code': exc.code})
     except DashboardSetupError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
+
+
+@browser_session_router.websocket("/api/browser-session/ws")
+async def paired_browser_socket(websocket: WebSocket):
+    from ..services.browser_bridge import browser_bridge
+    account_id = None
+    balance_task = None
+    await websocket.accept()
+    try:
+        origin = websocket.headers.get("origin", "")
+        if not ipaddress.ip_address(websocket.client.host).is_loopback or websocket.url.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError()
+        if not re.fullmatch(r"chrome-extension://[a-p]{32}", origin):
+            raise ValueError()
+        auth = await asyncio.wait_for(websocket.receive_json(), timeout=5)
+        account_id = int(auth.get("account_id", 0))
+        secret = auth.get("secret", "")
+        if not isinstance(secret, str) or not re.fullmatch(r"[a-f0-9]{64}", secret):
+            raise ValueError()
+        account = await db.get_token(account_id)
+        if not account or not account.browser_bridge_hash or not secrets.compare_digest(account.browser_bridge_hash, hashlib.sha256(secret.encode()).hexdigest()):
+            raise ValueError()
+        await browser_bridge.attach(account_id, websocket)
+        async def update_balance():
+            try:
+                await token_manager.refresh_credits(account_id)
+            except Exception:
+                pass  # The account panel retains Unknown until a live check succeeds.
+        balance_task = asyncio.create_task(update_balance())
+        while True:
+            message = await websocket.receive_json()
+            if isinstance(message, dict):
+                browser_bridge.receive(websocket, message)
+    except (WebSocketDisconnect, asyncio.TimeoutError, ValueError, TypeError, KeyError):
+        pass
+    finally:
+        if balance_task is not None:
+            balance_task.cancel()
+        if account_id is not None:
+            browser_bridge.detach(account_id, websocket)
+        try:
+            await websocket.close(code=1000)
+        except Exception:
+            pass
 
 
 @browser_session_router.post("/api/local-dashboard")
@@ -1368,6 +1431,7 @@ async def delete_token(token_id: int, token: str = Depends(verify_admin_token)):
     try:
         existing = await token_manager.get_token(token_id)
         await token_manager.delete_token(token_id)
+        await browser_bridge.revoke(token_id)
         if existing:
             dashboard_login.forget(existing.login_account or existing.email)
         if concurrency_manager:

@@ -14,6 +14,13 @@ COOKIES = json.dumps([{'name': 'OSID', 'value': 'fake-flow', 'domain': 'flow.goo
 
 
 class VerifiedAccountTests(unittest.IsolatedAsyncioTestCase):
+    async def test_browser_binding_hash_is_persisted_and_live_pairing_does_not_validate_copied_cookies(self):
+        result = await self.connect(trust_browser_identity=True, live_browser=True)
+        self.verify.assert_not_awaited()
+        account_id = result['account']['id']
+        await self.db.update_token(account_id, browser_bridge_hash='hash-only')
+        self.assertEqual((await self.db.get_token(account_id)).browser_bridge_hash, 'hash-only')
+
     async def asyncSetUp(self):
         folder = tempfile.TemporaryDirectory(); self.addCleanup(folder.cleanup)
         self.db = Database(str(Path(folder.name)/'flow.db'))

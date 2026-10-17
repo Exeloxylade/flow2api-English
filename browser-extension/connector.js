@@ -1,4 +1,4 @@
-/* No content scripts, background collection, persistent storage, or debugger access. */
+/* Explicit pairing; the background worker routes requests to this account's tab. */
 class FlowConnectorError extends Error {}
 globalThis.flowConnector = {
   parseCode(value) {
@@ -24,7 +24,7 @@ globalThis.flowConnector = {
     const response = await fetcher(pairing.url, {
       method: 'POST', credentials: 'omit', redirect: 'error',
       headers: {'Content-Type': 'application/json', 'X-Flow-Connector': '1', Authorization: `Bearer ${pairing.token}`},
-      body: JSON.stringify({login_account: identity.email, google_cookies: JSON.stringify(cookies)}),
+      body: JSON.stringify({login_account: identity.email, google_cookies: JSON.stringify(cookies), use_browser_bridge: true}),
       signal: AbortSignal.timeout(125000)
     });
     if (!response.ok) {
@@ -49,6 +49,9 @@ globalThis.flowConnector = {
     }
     const value = await response.json();
     if (!value.success) throw new FlowConnectorError('The account was not connected. Check the app and retry.');
+    if (!value.browser_bridge?.secret) throw new FlowConnectorError('Update Flow2API before using this connector. The server does not support the live browser connection.');
+    const connected = await api.runtime.sendMessage({type: 'flow_bridge_connect', binding: {account_id: value.browser_bridge.account_id, secret: value.browser_bridge.secret, port: Number(new URL(pairing.url).port), email: identity.email, tab_id: tab.id}});
+    if (!connected?.success) throw new FlowConnectorError('The account was saved, but its live browser connection failed. Keep Flow2API and this Flow studio tab open, then connect again.');
     return value.account;
   }
 };

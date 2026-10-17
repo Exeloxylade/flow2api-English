@@ -145,6 +145,11 @@ class LoadBalancer:
 
     async def _check_extension_route(self, token: Token) -> tuple[bool, str]:
         """Ensure extension captcha requests are routed to the selected account."""
+        if token.browser_bridge_hash:
+            from .browser_bridge import browser_bridge
+            if browser_bridge.is_online(token.id):
+                return True, ""
+            return False, "The paired Flow tab is offline. Open that account's signed-in Flow studio."
         if config.captcha_method != "extension":
             return True, ""
 
@@ -213,7 +218,8 @@ class LoadBalancer:
 
         for token in active_tokens:
             normalized_tier = normalize_user_paygate_tier(token.user_paygate_tier)
-            if model and not supports_model_for_tier(model, normalized_tier):
+            tier_unknown = bool(token.browser_bridge_hash) and token.credits_updated_at is None
+            if model and not tier_unknown and not supports_model_for_tier(model, normalized_tier):
                 filtered_reasons[token.id] = (
                     "账号等级不足，需要 " + get_paygate_tier_label(required_tier)
                 )
@@ -342,6 +348,8 @@ class LoadBalancer:
                     f"[LOAD_BALANCER] 跳过 Token {token_id}: AT无效或已过期"
                 )
                 continue
+            if model and not supports_model_for_tier(model, normalize_user_paygate_tier(token.user_paygate_tier)):
+                continue
 
             if reserve and not await self._reserve_slot(
                 token.id, for_image_generation, for_video_generation
@@ -404,5 +412,10 @@ class LoadBalancer:
                 return "当前有符合档位的账号，但图片生成功能已全部禁用。"
             if for_video_generation:
                 return "当前有符合档位的账号，但视频生成功能已全部禁用。"
+
+        if capability_tokens:
+            routes = [await self._check_extension_route(token) for token in capability_tokens]
+            if all(not ready for ready, _ in routes):
+                return routes[0][1]
 
         return None

@@ -7,7 +7,7 @@ document.getElementById('connect').addEventListener('click', async () => {
   try {
     const account = await flowConnector.connect(document.getElementById('code').value);
     document.getElementById('code').value = '';
-    status.textContent = `${account.email} is connected. You can return to Bang Story or Flow2API.`;
+    status.textContent = `${account.email} is connected. Keep this signed-in Flow studio tab open while using Bang Story or Flow2API.`;
   } catch (error) {
     status.setAttribute('role', 'alert');
     // Network and extension API errors can contain request details; show only our fixed messages.

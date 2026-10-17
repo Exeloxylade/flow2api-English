@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Flow Account Connector",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Explicitly connect the signed-in Flow account in your own browser to local Flow2API or Bang Story.",
-  "minimum_chrome_version": "102",
-  "permissions": ["activeTab", "scripting", "cookies"],
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "scripting", "cookies", "storage", "alarms"],
+  "background": {"service_worker": "background.js"},
   "host_permissions": ["https://*.google.com/*", "http://127.0.0.1/*"],
   "action": {"default_popup": "popup.html", "default_title": "Connect this Flow account"}
 }

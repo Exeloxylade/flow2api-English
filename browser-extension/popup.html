@@ -4,7 +4,7 @@
 <p>Sign in normally at <a href="https://flow.google.com/" target="_blank" rel="noreferrer">Google Flow</a>, open the creative studio, then reopen this extension on that tab.</p>
 <label for="code">Pairing code from Bang Story or Flow2API</label>
 <input id="code" type="text" autocomplete="off" spellcheck="false" placeholder="8765:…">
-<p class="note">Clicking Connect sends this browser profile’s Google session cookies directly to Flow2API on this computer. Cookies are sensitive account credentials. Nothing is uploaded to an extension service or stored by this extension.</p>
+<p class="note">Connect pairs this signed-in Flow tab with Flow2API on this computer. The extension saves a local connection key and runs Flow requests in this tab. Keep the studio tab open. Account cookies are sent only to your local server during setup; nothing is uploaded to an extension service.</p>
 <button id="connect">Connect this account</button>
 <p id="status" role="status">Keep this popup open while the account is verified.</p>
 <script src="connector.js"></script><script src="popup.js"></script></body></html>

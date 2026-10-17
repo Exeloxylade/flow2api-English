@@ -5118,6 +5118,16 @@ class _FlowClientBase(FlowFrontendMixin):
             - remote_browser 模式: browser_id 为远程 session_id
             - 其他模式: browser_id 为 None
         """
+        if token_id is not None and self.db:
+            account = await self.db.get_token(int(token_id))
+            if account and account.browser_bridge_hash:
+                from .browser_bridge import browser_bridge
+                result = await browser_bridge.call(
+                    account.id, account.email, "captcha", action=action, timeout=60,
+                )
+                self._set_request_fingerprint(None)
+                self._set_captcha_request_context(None)
+                return result.get("token"), None
         captcha_method = method_override or config.captcha_method
         previous = self._get_captcha_request_context()
         if previous.get("method") == "browser" and previous.get("owner") is asyncio.current_task():

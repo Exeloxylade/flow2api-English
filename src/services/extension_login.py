@@ -59,7 +59,7 @@ class ExtensionLogin(DashboardLogin):
         }
         return self.status()
 
-    async def submit(self, token, email, cookies):
+    async def submit(self, token, email, cookies, *, live_bridge=False):
         if not self.status()['busy'] or self.state['phase'] != 'login' or not self._token or not secrets.compare_digest(token, self._token):
             raise ExtensionConnectionError('pairing_invalid')
         if self._email and self._email != email:
@@ -67,16 +67,17 @@ class ExtensionLogin(DashboardLogin):
         # Consume before awaiting upstream I/O, so concurrent requests cannot reuse this capability.
         self._token = None
         self._report('saving', 'Verifying your Flow account…', pairing_code=None)
-        self.task = asyncio.create_task(self._finish(email, cookies))
+        self.task = asyncio.create_task(self._finish(email, cookies, live_bridge=live_bridge))
         await asyncio.shield(self.task)
         if self.state['phase'] != 'ready':
             raise ExtensionConnectionError(self.state.get('error_code', 'account_setup_failed'))
         return {'success': True, 'account': self.state['account']}
 
-    async def _finish(self, email, cookies):
+    async def _finish(self, email, cookies, *, live_bridge=False):
         try:
+            options = {"live_bridge": True} if live_bridge else {}
             result = await asyncio.wait_for(
-                self._register(email, cookies, self._account_id, True), timeout=120
+                self._register(email, cookies, self._account_id, True, **options), timeout=120
             )
             self._report('ready', 'Account connected. Automatic session refresh is enabled.', account=result['account'])
         except Exception as exc:

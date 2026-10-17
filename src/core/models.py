@@ -47,6 +47,7 @@ class Token(BaseModel):
 
     # Google/Flow Cookie 刷新；保留旧字段名兼容已有数据
     protocol_mode: str = "session"  # session/protocol
+    browser_bridge_hash: str = ""  # Capability hash; never expose in account responses
     google_cookies: str = ""
     login_account: str = ""
     login_password: str = ""

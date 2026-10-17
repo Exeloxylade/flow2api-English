@@ -249,7 +249,7 @@ class TokenManager:
             warmup_limit = None
 
         for token in token_list:
-            if not token or not token.is_active:
+            if not token or not token.is_active or token.browser_bridge_hash:
                 continue
 
             candidate_ids: List[str] = []
@@ -286,6 +286,7 @@ class TokenManager:
             token.st,
             project_name,
             google_cookies=token.google_cookies,
+            token_id=token.id,
         )
         debug_logger.log_info(
             f"[PROJECT] Created pooled project for token {token.id}: {project_name} ({project_id})"
@@ -759,6 +760,14 @@ class TokenManager:
             result = await self._do_refresh_at(token_id, token.st, token)
             if result:
                 return True
+            if token.browser_bridge_hash:
+                # A disconnected tab or a rejected browser request must never
+                # launch a different browser or disable this paired account.
+                await self.db.update_token(
+                    token_id, last_st_refresh_at=datetime.now(timezone.utc),
+                    last_st_refresh_result=self._last_at_refresh_error.pop(token_id, "Paired Flow tab unavailable"),
+                )
+                return False
 
             debug_logger.log_info(
                 f"[AT_REFRESH] Token {token_id}: first AT refresh failed, trying ST refresh..."
@@ -872,6 +881,7 @@ class TokenManager:
                     credits=credits_result.get("credits", 0),
                     user_paygate_tier=credits_result.get("userPaygateTier"),
                     credits_updated_at=datetime.now(timezone.utc),
+                    **({"last_st_refresh_at": datetime.now(timezone.utc), "last_st_refresh_result": "Browser session verified"} if token and token.browser_bridge_hash else {}),
                 )
                 self._mark_at_valid(token_id)
                 debug_logger.log_info(
@@ -989,6 +999,11 @@ class TokenManager:
 
     async def _try_refresh_st(self, token_id: int, token: Token) -> Optional[str]:
         """Refresh full current-Flow Cookies, with an account-bound browser fallback."""
+        if token.browser_bridge_hash:
+            from .browser_bridge import browser_bridge
+            if not browser_bridge.is_online(token_id):
+                return None
+            return token.st if await self._do_refresh_at(token_id, token.st, token) else None
         refreshed = await self._try_protocol_refresh_st(token_id, token)
         if refreshed:
             return refreshed
@@ -1024,6 +1039,8 @@ class TokenManager:
             token = await self.db.get_token(token_id)
             if not token:
                 return False
+            if token.browser_bridge_hash:
+                return await self._do_refresh_at(token_id, token.st, token)
             if not (token.google_cookies or "").strip():
                 return await self._do_refresh_at(token_id, token.st, token)
             if await self._try_refresh_st(token_id, token):
@@ -1042,7 +1059,7 @@ class TokenManager:
             latest = await self.db.get_token(token_id)
             if not latest or not latest.is_active or not latest.auto_refresh_enabled:
                 return
-            if not (latest.google_cookies or "").strip():
+            if not (latest.google_cookies or "").strip() and not latest.browser_bridge_hash:
                 return
             # Cookie and AT metadata are committed together after current RPC validation.
             await self._try_refresh_st(token_id, latest)
@@ -1064,7 +1081,7 @@ class TokenManager:
             try:
                 if not token.auto_refresh_enabled:
                     continue
-                if not (token.google_cookies or "").strip():
+                if not (token.google_cookies or "").strip() and not token.browser_bridge_hash:
                     continue
 
                 interval_minutes = (
@@ -1166,6 +1183,11 @@ class TokenManager:
     async def record_error(self, token_id: int):
         """Record token error and auto-disable if threshold reached"""
         await self.db.increment_token_stats(token_id, "error")
+        token = await self.db.get_token(token_id)
+        if token and token.browser_bridge_hash:
+            # Prompt/CAPTCHA/tab failures do not revoke a paired browser login.
+            # Explicit upstream rate-limit bans are handled separately.
+            return
 
         # Check if should auto-disable token (based on consecutive errors)
         stats = await self.db.get_token_stats(token_id)

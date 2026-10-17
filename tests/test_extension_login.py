@@ -83,6 +83,18 @@ class ExtensionPairingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ExtensionApiTests(unittest.IsolatedAsyncioTestCase):
+    async def test_live_bridge_secret_is_only_in_pairing_response_and_database_gets_hash(self):
+        from types import SimpleNamespace
+        import hashlib
+        database = SimpleNamespace(update_token=AsyncMock())
+        with patch.object(admin, 'db', database):
+            response = await self.client.post('/api/browser-login/extension', headers=self.headers, json={**self.body, 'use_browser_bridge': True})
+        self.assertEqual(response.status_code, 200, response.text)
+        secret = response.json()['browser_bridge']['secret']
+        self.assertEqual(len(secret), 64)
+        self.assertNotIn(secret, json.dumps(self.service.status()))
+        self.assertEqual(database.update_token.await_args.kwargs['browser_bridge_hash'], hashlib.sha256(secret.encode()).hexdigest())
+
     async def asyncSetUp(self):
         self.service = ExtensionLogin()
         for name, value in [('dashboard_login', self.service)]:

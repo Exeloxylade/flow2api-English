@@ -22,11 +22,20 @@ class CurrentFlowClientMixin:
     def _get_runtime_config(self):
         raise NotImplementedError
 
+    async def _paired_browser_account(self, token_id):
+        database = getattr(self, "db", None)
+        account = await database.get_token(int(token_id)) if token_id is not None and database else None
+        return account if account and getattr(account, "browser_bridge_hash", "") else None
+
     async def _frontend_cookie(
         self,
         google_cookies: Optional[str] = None,
         token_id: Optional[int] = None,
     ) -> str:
+        if await self._paired_browser_account(token_id):
+            # The live tab owns renewal; an old exported snapshot must not gate
+            # requests after Google rotates cookies in the real browser.
+            return ""
         return await self._resolve_flow_frontend_cookie_header(
             google_cookies=google_cookies,
             token_id=token_id,
@@ -104,6 +113,20 @@ class CurrentFlowClientMixin:
         source_path: Optional[str] = None,
         timeout: Optional[int] = None,
     ) -> Any:
+        account = await self._paired_browser_account(token_id)
+        if account:
+            from .browser_bridge import browser_bridge
+            response = await browser_bridge.call(
+                account.id, account.email, "rpc", timeout=timeout or 120,
+                rpc_id=rpc_id, argument=argument,
+                source_path=source_path or (f"/project/{project_id}" if project_id else "/projects"),
+            )
+            frames = self._parse_batchexecute_frames(response.get("text", ""))
+            self._raise_batchexecute_error(frames, rpc_id)
+            payload = self._extract_batchexecute_payload(frames, rpc_id)
+            if payload is None:
+                raise RuntimeError(f"The paired Flow tab returned no RPC payload: rpc={rpc_id}")
+            return payload
         cookie_storage = await self._resolve_flow_frontend_cookie_storage(
             google_cookies=google_cookies,
             token_id=token_id,
@@ -124,7 +147,7 @@ class CurrentFlowClientMixin:
         google_cookies: Optional[str] = None,
         token_id: Optional[int] = None,
     ) -> dict:
-        if str(google_cookies or "").strip():
+        if str(google_cookies or "").strip() and not await self._paired_browser_account(token_id):
             validate_flow_cookie_storage(google_cookies)
         credits = await self.get_credits(
             self.FRONTEND_ACCESS_TOKEN,
@@ -145,11 +168,13 @@ class CurrentFlowClientMixin:
         st: str,
         title: str,
         google_cookies: Optional[str] = None,
+        token_id: Optional[int] = None,
     ) -> str:
         payload = await self._current_rpc(
             rpc_id="jHPbke",
             argument=["projects/*", [None, [title]], [None, 22]],
             google_cookies=google_cookies,
+            token_id=token_id,
             timeout=max(self._get_control_plane_timeout(), 20),
         )
         project_id = self._extract_flow_project_id(payload)
@@ -191,8 +216,10 @@ class CurrentFlowClientMixin:
                 for value in values
                 if isinstance(value, (int, float)) and not isinstance(value, bool)
             ),
-            0,
+            None,
         )
+        if credits is None:
+            raise RuntimeError("Flow returned an unrecognized credit response; the balance is unknown.")
         return {
             "credits": credits,
             "userPaygateTier": (
@@ -363,6 +390,7 @@ class CurrentFlowClientMixin:
         if model_name not in self.CURRENT_IMAGE_MODELS:
             raise ValueError(f"Unsupported Flow image model: {model_name}")
         await self._frontend_cookie(google_cookies, token_id)
+        paired_browser = bool(await self._paired_browser_account(token_id))
         max_retries = max(1, int(self._get_runtime_config().flow_max_retries or 1))
         trace: Dict[str, Any] = {"max_retries": max_retries, "generation_attempts": []}
         last_error: Optional[Exception] = None
@@ -370,7 +398,7 @@ class CurrentFlowClientMixin:
             google_cookies=google_cookies,
             token_id=token_id,
         )
-        if not str(cookie_storage or "").strip():
+        if not paired_browser and not str(cookie_storage or "").strip():
             raise RuntimeError("Flow frontend generation requires Google session cookies")
         for retry_attempt in range(max_retries):
             started_at = time.time()
@@ -428,6 +456,10 @@ class CurrentFlowClientMixin:
                 attempt["error"] = str(error)[:240]
                 attempt["duration_ms"] = int((time.time() - started_at) * 1000)
                 trace["generation_attempts"].append(attempt)
+                if paired_browser:
+                    # Do not recover a real-browser failure through a different
+                    # managed browser, or automatically resubmit an uncertain job.
+                    raise
                 if (
                     submission_accepted
                     or bool(getattr(error, "outcome_unknown", False))

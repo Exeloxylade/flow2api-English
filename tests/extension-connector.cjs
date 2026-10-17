@@ -10,6 +10,7 @@ function fixture() {
   const calls = []
   const state = {url: 'https://flow.google.com/projects', email: 'owner@example.com', code: 200, error_code: 'pairing_invalid'}
   const api = {
+    runtime: {sendMessage: async message => {assert.equal(message.type, 'flow_bridge_connect'); assert.equal(message.binding.tab_id, 7); return {success: true}}},
     tabs: {query: async () => [{id: 7, url: state.url}]},
     scripting: {executeScript: async () => [{result: {host: 'flow.google.com', email: state.email}}]},
     cookies: {
@@ -20,7 +21,7 @@ function fixture() {
       }
     }
   }
-  const fetcher = async (url, options) => {calls.push({url, options}); return {ok: state.code === 200, status: state.code, json: async () => state.code === 200 ? {success: true, account: {id: 3, email: state.email}} : {error_code: state.error_code, detail: 'private-session-data'}}}
+  const fetcher = async (url, options) => {calls.push({url, options}); return {ok: state.code === 200, status: state.code, json: async () => state.code === 200 ? {success: true, account: {id: 3, email: state.email}, browser_bridge: {account_id: 3, secret: 'b'.repeat(64)}} : {error_code: state.error_code, detail: 'private-session-data'}}}
   return {connector: sandbox.flowConnector, api, fetcher, state, calls, code: '8765:' + 'a'.repeat(64)}
 }
 test('connector reads the active browser profile only on explicit connect and sends only to loopback', async () => {

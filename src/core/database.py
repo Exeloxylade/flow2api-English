@@ -528,6 +528,7 @@ class Database:
                     ("captcha_proxy_url", "TEXT"),  # token级打码代理
                     ("extension_route_key", "TEXT"),  # extension 模式路由键
                     ("protocol_mode", "TEXT DEFAULT 'session'"),  # ST 刷新模式
+                    ("browser_bridge_hash", "TEXT DEFAULT ''"),
                     ("google_cookies", "TEXT DEFAULT ''"),  # 协议登录 Google Cookies
                     ("login_account", "TEXT DEFAULT ''"),  # 协议登录账号提示
                     ("login_password", "TEXT DEFAULT ''"),  # 预留
@@ -767,6 +768,7 @@ class Database:
                     captcha_proxy_url TEXT,
                     extension_route_key TEXT,
                     protocol_mode TEXT DEFAULT 'session',
+                    browser_bridge_hash TEXT DEFAULT '',
                     google_cookies TEXT DEFAULT '',
                     login_account TEXT DEFAULT '',
                     login_password TEXT DEFAULT '',
@@ -1130,10 +1132,10 @@ class Database:
                                    credits, credits_updated_at, user_paygate_tier, current_project_id, current_project_name,
                                    image_enabled, video_enabled, image_concurrency, video_concurrency,
                                    captcha_proxy_url, extension_route_key,
-                                   protocol_mode, google_cookies, login_account, login_password,
+                                   protocol_mode, browser_bridge_hash, google_cookies, login_account, login_password,
                                    proxy_url, auto_refresh_enabled, refresh_interval_minutes,
                                    last_st_refresh_at, last_st_refresh_result)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     token.st,
@@ -1155,6 +1157,7 @@ class Database:
                     token.captcha_proxy_url,
                     token.extension_route_key,
                     token.protocol_mode,
+                    token.browser_bridge_hash,
                     token.google_cookies,
                     token.login_account,
                     token.login_password,

@@ -36,6 +36,10 @@ Browser/API tests use test doubles. Live Google authentication, account eligibil
 
 The default connection uses `browser-extension/` and `src/services/extension_login.py`. Admin-authenticated `/api/browser-login/start` creates a one-use local pairing; `/api/browser-login/extension` accepts the explicitly shared session. The older `browser_login.py` helper and `/api/tokens/browser-session` endpoint remain for compatibility, but the dashboard and updated Bang Story no longer launch the automated login helper. Registration verifies the Flow account identity, updates duplicate emails, validates reconnect targets, and re-enables a previously disabled account only after validation. The response contains account metadata and no cookies or access tokens. See [the desktop integration contract](docs/desktop-login.md).
 
+### Keep the paired browser connected
+
+For local browser pairing, use **Flow Account Connector 1.1.0** from the dashboard's connector download. Reload the extension after updating its files and reconnect each existing account once with a fresh code. Keep each account's signed-in Flow studio tab open (use a separate Chrome/Edge profile per account). The panel displays **Browser online/offline**. Credit checks, project creation, CAPTCHA and image generation execute inside that exact tab and verify its account identity before each request. Server/browser restarts reconnect automatically when the matching Flow tab is open; a disconnected tab does not launch a different browser or disable its account. A pairing key is saved in extension-local storage; its hash is stored by the local server.
+
 ## Add an account manually (advanced / standalone)
 
 Standalone server users can continue to use **Accounts → Add**. This fallback is also available in Bang Story's advanced panel; it is not required for extension pairing.
