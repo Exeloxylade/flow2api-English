@@ -225,11 +225,7 @@ class TokenManager:
     async def _get_credits_for_token(self, token: Token, at: str) -> Dict[str, Any]:
         return await self._flow_call_for_token(
             token,
-            lambda: self.flow_client.get_credits(
-                at,
-                google_cookies=token.google_cookies,
-                token_id=token.id,
-            ),
+            lambda: self.flow_client.get_credits(at),
         )
 
     async def get_personal_warmup_project_ids(
@@ -444,10 +440,7 @@ class TokenManager:
             raise ValueError(f"Google Cookie 验证失败：{str(e)}")
 
         try:
-            credits_result = await self.flow_client.get_credits(
-                at,
-                google_cookies=google_cookies,
-            )
+            credits_result = await self.flow_client.get_credits(at)
             credits = credits_result.get("credits", 0)
             user_paygate_tier = credits_result.get("userPaygateTier")
         except Exception:
@@ -1254,19 +1247,22 @@ class TokenManager:
         """
         token = await self.db.get_token(token_id)
         if not token:
-            return 0
+            raise ValueError(f"Token {token_id} was not found")
 
         # 确保AT有效
         token = await self.ensure_valid_token(token)
         if not token:
-            return 0
+            snapshot = await self.db.get_token(token_id)
+            reason = (
+                (snapshot.last_st_refresh_result if snapshot else None)
+                or "token validation failed"
+            )
+            raise RuntimeError(
+                f"Cannot refresh credits: account token is unavailable ({reason})"
+            )
 
         try:
-            result = await self.flow_client.get_credits(
-                token.at,
-                google_cookies=token.google_cookies,
-                token_id=token.id,
-            )
+            result = await self._get_credits_for_token(token, token.at)
             credits = result.get("credits", 0)
             user_paygate_tier = result.get("userPaygateTier")
 
@@ -1282,4 +1278,6 @@ class TokenManager:
             debug_logger.log_error(
                 f"Failed to refresh credits for token {token_id}: {str(e)}"
             )
-            return 0
+            raise RuntimeError(
+                f"Failed to refresh credits for token {token_id}: {e}"
+            ) from e
