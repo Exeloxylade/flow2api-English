@@ -94,7 +94,7 @@ test('CAPTCHA execution and library loading both have bounded waits', async () =
   assert.equal((await f.run(captchaJob)).error_code, 'captcha_timeout');
   delete f.sandbox.window.grecaptcha;
   f.sandbox.document.querySelectorAll = () => [{src: 'https://www.google.com/recaptcha/enterprise.js'}];
-  assert.equal((await f.run(captchaJob)).error_code, 'captcha_script_failed');
+  assert.equal((await f.run(captchaJob)).error_code, 'captcha_library_unavailable');
 });
 
 test('CAPTCHA checks account and action before loading any scripts', async () => {
@@ -139,7 +139,7 @@ test('policy denial or script assignment failure cleans up and preserves page re
     if (mode==='policy_denied') f.sandbox.window.trustedTypes=originalFactory;
     f.sandbox.document.createElement=()=>({set src(value) {throw new TypeError('TrustedScriptURL required');},remove(){}});
     f.sandbox.document.head={appendChild(){assert.fail('blocked script must not be appended');}};
-    assert.equal((await f.run(captchaJob)).error_code, 'captcha_script_failed');
+    assert.equal((await f.run(captchaJob)).error_code, 'captcha_script_policy');
     assert.equal(activePolls, 0);
     assert.equal(f.sandbox.window.__flowConnectorCaptchaLoading, undefined);
     if (mode==='policy_denied') assert.equal(f.sandbox.window.trustedTypes, originalFactory);
@@ -156,4 +156,16 @@ test('missing real browser session token reports not-ready instead of pretending
   const f = fixture(); delete f.sandbox.window.WIZ_global_data.SNlM0e;
   assert.equal((await f.run(f.job)).error_code, 'page_not_ready');
   assert.equal(f.calls.length, 0);
+});
+
+
+test('an existing failed loader reports promptly and preserves page handlers and script', async () => {
+  const f=fixture(); let listener, removed=0; const handler=()=>{};
+  const script={src:'https://www.google.com/recaptcha/enterprise.js', onerror:handler,
+    addEventListener(type, callback) {assert.equal(type,'error');listener=callback},
+    removeEventListener(type, callback) {assert.equal(type,'error');assert.equal(callback,listener); removed++},
+    remove(){assert.fail('must preserve page script')}};
+  f.sandbox.document.querySelectorAll=()=>[script];
+  const result=f.run(captchaJob); listener();
+  assert.equal((await result).error_code,'captcha_script_failed'); assert.equal(script.onerror,handler); assert.equal(removed,1);
 });

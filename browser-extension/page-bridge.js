@@ -30,18 +30,22 @@ async function runFlowOperation(job) {
             let poll;
             let timer;
             let settled = false;
+            // A page-owned script must not be removed or have its handlers replaced.
+            const existingError = () => finish(new Error('captcha_script_failed'));
             const finish = error => {
               if (settled) return;
               settled = true;
               clearInterval(poll); clearTimeout(timer);
               if (script) script.onerror = null;
+              existing?.removeEventListener?.('error', existingError);
               if (error) { if (script) script.remove(); reject(error); }
               else resolve();
             };
             poll = setInterval(() => {
               if (typeof window.grecaptcha?.enterprise?.execute === 'function') finish();
             }, 100);
-            timer = setTimeout(() => finish(new Error('captcha_script_failed')), 15000);
+            timer = setTimeout(() => finish(new Error(existing ? 'captcha_library_unavailable' : 'captcha_script_failed')), 15000);
+            existing?.addEventListener?.('error', existingError, {once: true});
             if (!existing) {
               try {
                 script = document.createElement('script');
@@ -67,7 +71,7 @@ async function runFlowOperation(job) {
                 script.onerror = () => finish(new Error('captcha_script_failed'));
                 (document.head || document.documentElement).appendChild(script);
               } catch {
-                finish(new Error('captcha_script_failed'));
+                finish(new Error('captcha_script_policy'));
               }
             }
           }).finally(() => { delete window.__flowConnectorCaptchaLoading; });
@@ -119,7 +123,7 @@ async function runFlowOperation(job) {
     }
     throw new Error('authentication_required');
   } catch (error) {
-    const allowedErrors = ['authentication_required', 'account_mismatch', 'page_not_ready', 'captcha_unavailable', 'captcha_script_failed', 'captcha_timeout', 'captcha_rejected', 'invalid_operation'];
+    const allowedErrors = ['authentication_required', 'account_mismatch', 'page_not_ready', 'captcha_unavailable', 'captcha_script_failed', 'captcha_script_policy', 'captcha_library_unavailable', 'captcha_timeout', 'captcha_rejected', 'invalid_operation'];
     return {success: false, error_code: allowedErrors.includes(error.message) ? error.message : 'request_failed'};
   }
 }

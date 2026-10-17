@@ -21,3 +21,12 @@ This extension reads Google session cookies only when you click Connect. They ar
 Version 1.1.2 also supports Flow pages that enforce TrustedScriptURL: its named Trusted Types policy accepts only the Google enterprise.js loader with a validated site key, and the script inherits the current page nonce. It does not install a default policy or weaken CSP. Synchronous loader failures release timers and report a script-loading error.
 
 Version 1.1.3 restores saved accounts independently, bounds identity checks on sleeping tabs, and prefers active Flow tabs when a saved tab is unavailable. A stale pairing cannot hold up another account.
+
+
+CAPTCHA diagnostics (connector 1.1.4):
+- `captcha_script_failed`: loading the Google library failed (including an existing page script's error event).
+- `captcha_script_policy`: the page refused script creation or assignment. The connector preserves the page policy.
+- `captcha_library_unavailable`: a page CAPTCHA loader exists but its public API did not appear within 15 seconds.
+- `captcha_rejected`: the API was available but execution rejected or returned no token.
+
+A connected account and a working credit balance do not prove CAPTCHA is available. Re-pairing does not repair page security restrictions or a rejected CAPTCHA. Select a separately configured CAPTCHA method in the dashboard if the paired page cannot supply it, or generate directly in Flow. No alternate method is guaranteed to be accepted by Google.

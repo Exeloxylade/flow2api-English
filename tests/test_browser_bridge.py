@@ -18,6 +18,8 @@ from src.services.token_manager import TokenManager
 class BrowserBridgeTests(unittest.IsolatedAsyncioTestCase):
     async def test_captcha_failure_categories_have_safe_actionable_messages(self):
         for code, expected in [('captcha_script_failed', 'library could not load'),
+                               ('captcha_script_policy', 'security policy'),
+                               ('captcha_library_unavailable', 'public API'),
                                ('captcha_timeout', 'did not finish'),
                                ('captcha_rejected', 'API rejected'),
                                ('request_failed', 'captcha/request_failed'),
