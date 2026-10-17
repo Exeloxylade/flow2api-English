@@ -40,6 +40,14 @@ The default connection uses `browser-extension/` and `src/services/extension_log
 
 For local browser pairing, use **Flow Account Connector 1.1.3** from the dashboard's connector download. Reload the extension after updating its files in the same folder. Only upgrades from 1.0.x need a fresh pairing; 1.1.x pairings remain valid. Keep each account's signed-in Flow studio tab open (use a separate Chrome/Edge profile per account). The panel displays **Browser online/offline**. Credit checks, project creation, CAPTCHA and image generation execute inside that exact tab and verify its account identity before each request. Server/browser restarts reconnect automatically when the matching Flow tab is open; a disconnected tab does not launch a different browser or disable its account. A pairing key is saved in extension-local storage; its hash is stored by the local server.
 
+## CAPTCHA provider selection
+
+In Settings → Captcha settings, **Automatic** uses each paired account's Flow tab. Accounts without a pairing keep their configured legacy provider, shown below the selector. This also preserves the behavior of existing paired accounts during upgrade.
+
+Selecting **Built-in browser**, **Headed browser**, **Upstream Captcha Worker**, or an external provider explicitly routes CAPTCHA through that upstream handler, even for paired accounts. Account login and image RPC transport stay paired to the original account. Managed browser methods may open another browser, and the upstream Captcha Worker opens its own background tab; they are separate from Flow Account Connector. External providers require their own credentials. Google verification and token acceptance still apply.
+
+Bang Story and new account pairing preserve this choice. Save **Automatic** to return to the paired-tab default. Standalone score testing is unavailable for paired-tab CAPTCHA and does not launch a browser for that mode. No connector reinstall is required for this server-side routing update.
+
 ## Add an account manually (advanced / standalone)
 
 Standalone server users can continue to use **Accounts → Add**. This fallback is also available in Bang Story's advanced panel; it is not required for extension pairing.

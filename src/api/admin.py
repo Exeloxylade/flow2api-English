@@ -39,6 +39,7 @@ from ..core.browser_runtime_status import (
 from ..core.monitoring import build_public_health_snapshot
 from ..services.token_manager import TokenManager
 from ..services.browser_bridge import browser_bridge
+from ..services.captcha_routing import CAPTCHA_METHODS
 from ..services.proxy_manager import ProxyManager
 from ..services.concurrency_manager import ConcurrencyManager
 from ..services.browser_accounts import BrowserSessionError, register_browser_session
@@ -1221,7 +1222,6 @@ async def dashboard_login_start(request: Request, body: DashboardConnectRequest,
                 live_browser=live_bridge,
             )
             try:
-                await db.update_captcha_config(captcha_method="personal")
                 await db.update_token_refresh_config(enabled=True)
                 await db.reload_config_to_memory()
             except Exception:
@@ -2228,6 +2228,8 @@ async def update_captcha_config(
 ):
     """Update captcha configuration"""
     captcha_method = request.get("captcha_method")
+    if captcha_method is not None and (not isinstance(captcha_method, str) or captcha_method not in CAPTCHA_METHODS):
+        return {"success": False, "message": "Unsupported CAPTCHA method"}
     yescaptcha_api_key = request.get("yescaptcha_api_key")
     yescaptcha_base_url = request.get("yescaptcha_base_url")
     yescaptcha_task_type = normalize_yescaptcha_task_type(
@@ -2311,7 +2313,9 @@ async def update_captcha_config(
             }
 
     await db.update_captcha_config(
-        captcha_method=captcha_method,
+        # Auto retains the legacy provider for accounts without a paired tab.
+        captcha_method=None if captcha_method == "auto" else captcha_method,
+        captcha_method_explicit=None if captcha_method is None else captcha_method != "auto",
         yescaptcha_api_key=yescaptcha_api_key,
         yescaptcha_base_url=yescaptcha_base_url,
         yescaptcha_task_type=yescaptcha_task_type,
@@ -2383,7 +2387,8 @@ async def get_captcha_config(token: str = Depends(verify_admin_token)):
     """Get captcha configuration"""
     captcha_config = await db.get_captcha_config()
     return {
-        "captcha_method": captcha_config.captcha_method,
+        "captcha_method": captcha_config.captcha_method if captcha_config.captcha_method_explicit else "auto",
+        "auto_fallback_method": captcha_config.captcha_method,
         "yescaptcha_api_key": captcha_config.yescaptcha_api_key,
         "yescaptcha_base_url": captcha_config.yescaptcha_base_url,
         "yescaptcha_task_type": captcha_config.yescaptcha_task_type,
@@ -2444,6 +2449,15 @@ async def test_captcha_score(
     captcha_method = (
         (captcha_config.captcha_method or config.captcha_method or "").strip().lower()
     )
+    if captcha_method == "paired_browser" or (
+        not captcha_config.captcha_method_explicit
+        and any(account.browser_bridge_hash for account in await db.get_all_tokens())
+    ):
+        return {
+            "success": False,
+            "message": "Paired-browser CAPTCHA is verified during generation in the paired Flow tab. This standalone score test does not open a browser or test paired accounts.",
+            "captcha_method": "paired_browser",
+        }
     browser_proxy_enabled = bool(captcha_config.browser_proxy_enabled)
     browser_proxy_url = captcha_config.browser_proxy_url or ""
 

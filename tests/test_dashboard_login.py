@@ -96,7 +96,7 @@ class DashboardApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.status_code,200,r.text);self.assertEqual(self.service.start.await_args.kwargs,{'email':EMAIL,'account_id':1})
         register=self.service.start.await_args.args[0]
         with patch.object(admin,'register_browser_session',AsyncMock(return_value=RESULT)):await register(EMAIL,'private-cookies',1)
-        self.db.update_captcha_config.assert_awaited_once_with(captcha_method='personal')
+        self.db.update_captcha_config.assert_not_awaited()
         self.db.update_token_refresh_config.assert_awaited_once_with(enabled=True);self.db.reload_config_to_memory.assert_awaited_once()
 
     async def test_admin_and_local_same_origin_required(self):

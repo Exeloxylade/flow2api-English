@@ -5118,17 +5118,14 @@ class _FlowClientBase(FlowFrontendMixin):
             - remote_browser 模式: browser_id 为远程 session_id
             - 其他模式: browser_id 为 None
         """
+        from .captcha_routing import resolve_captcha_method
+        account = None
         if token_id is not None and self.db:
             account = await self.db.get_token(int(token_id))
-            if account and account.browser_bridge_hash:
-                from .browser_bridge import browser_bridge
-                result = await browser_bridge.call(
-                    account.id, account.email, "captcha", action=action, timeout=60,
-                )
-                self._set_request_fingerprint(None)
-                self._set_captcha_request_context(None)
-                return result.get("token"), None
-        captcha_method = method_override or config.captcha_method
+        captcha_method = resolve_captcha_method(
+            config.captcha_method, paired=bool(account and account.browser_bridge_hash),
+            explicit=config.captcha_method_explicit, override=method_override,
+        )
         previous = self._get_captcha_request_context()
         if previous.get("method") == "browser" and previous.get("owner") is asyncio.current_task():
             await self._notify_browser_captcha_request_finished(previous.get("browser_ref"))
@@ -5136,6 +5133,16 @@ class _FlowClientBase(FlowFrontendMixin):
             "method": captcha_method, "token_id": token_id, "project_id": project_id,
             "owner": asyncio.current_task(),
         })
+        if captcha_method == "paired_browser":
+            from .browser_bridge import browser_bridge
+            self._set_request_fingerprint(None)
+            result = await browser_bridge.call(
+                account.id, account.email, "captcha", action=action, timeout=60,
+            )
+            token = (result or {}).get("token")
+            if not isinstance(token, str) or not token.strip():
+                raise RuntimeError("The paired Flow tab returned no CAPTCHA token. Check its verification status.")
+            return token, None
         debug_logger.log_info(
             f"[reCAPTCHA] 开始获取 token: method={captcha_method}, project_id={project_id}, action={action}"
         )

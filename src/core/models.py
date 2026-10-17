@@ -191,6 +191,7 @@ class CaptchaConfig(BaseModel):
     """Captcha configuration"""
 
     id: int = 1
+    captcha_method_explicit: bool = False
     captcha_method: str = (
         "yescaptcha"  # yescaptcha/captcharun/twocaptcha/capsolver/ezcaptcha/browser/personal/remote_browser
     )

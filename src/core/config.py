@@ -390,6 +390,10 @@ class Config:
 
     # Captcha configuration
     @property
+    def captcha_method_explicit(self) -> bool:
+        return bool(self._config.get("captcha", {}).get("captcha_method_explicit", False))
+
+    @property
     def captcha_method(self) -> str:
         """Get captcha method"""
         return self._config.get("captcha", {}).get("captcha_method", "yescaptcha")

@@ -606,6 +606,7 @@ class Database:
             # Check and add missing columns to captcha_config table
             if await self._table_exists(db, "captcha_config"):
                 captcha_columns_to_add = [
+                    ("captcha_method_explicit", "BOOLEAN NOT NULL DEFAULT 0"),
                     ("browser_proxy_enabled", "BOOLEAN DEFAULT 0"),
                     ("browser_proxy_url", "TEXT"),
                     (
@@ -927,6 +928,7 @@ class Database:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS captcha_config (
                     id INTEGER PRIMARY KEY DEFAULT 1,
+                    captcha_method_explicit BOOLEAN NOT NULL DEFAULT 0,
                     captcha_method TEXT DEFAULT 'yescaptcha',
                     yescaptcha_api_key TEXT DEFAULT '',
                     yescaptcha_base_url TEXT DEFAULT 'https://api.yescaptcha.com',
@@ -2097,6 +2099,7 @@ class Database:
         captcha_config = await self.get_captcha_config()
         if captcha_config:
             config.set_captcha_method(captcha_config.captcha_method)
+            config.get_raw_config().setdefault("captcha", {})["captcha_method_explicit"] = captcha_config.captcha_method_explicit
             config.set_yescaptcha_api_key(captcha_config.yescaptcha_api_key)
             config.set_yescaptcha_base_url(captcha_config.yescaptcha_base_url)
             config.set_yescaptcha_task_type(captcha_config.yescaptcha_task_type)
@@ -2306,6 +2309,7 @@ class Database:
         personal_max_resident_tabs: int = None,
         browser_personal_fresh_restart_every_n_solves: int = None,
         personal_idle_tab_ttl_seconds: int = None,
+        captcha_method_explicit: bool = None,
     ):
         """Update captcha configuration"""
         async with self._connect(write=True) as db:
@@ -2623,6 +2627,11 @@ class Database:
                     ),
                 )
 
+            if captcha_method_explicit is not None:
+                await db.execute(
+                    "UPDATE captcha_config SET captcha_method_explicit = ? WHERE id = 1",
+                    (bool(captcha_method_explicit),),
+                )
             # Keep the new provider update in the same transaction as the existing fields.
             previous_captcha = dict(row) if row else {}
             await db.execute(
