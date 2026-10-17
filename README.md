@@ -8,29 +8,33 @@ The login page, account management panel, settings, request logs, model test pag
 
 ## Use with Bang Story
 
-Use the updated [Bang Story repository](https://github.com/Exeloxylade/Bang-Story-free-version).
+Use the updated [Bang Story repository](https://github.com/Exeloxylade/Bang-Story-free-version). The matching integration is proposed in [Bang Story PR #3](https://github.com/Exeloxylade/Bang-Story-free-version/pull/3).
 
-1. Open **Pengaturan → Flow2API** and enable **Gunakan Flow2API lokal**.
-2. Click **Pasang Flow2API**. To replace an older Chinese installation, stop it first and click **Pasang ulang**.
-3. Click **Jalankan dan login**, then **Buka panel akun**. Bang Story manages the local admin login and API key.
-4. Open **Setup guide** at the top of the English panel and follow the account steps below.
-5. Return to Bang Story, click **Periksa akun**, then **Gunakan untuk proyek baru**. Existing projects can select Flow2API in **Ide cerita**.
+1. Open **Pengaturan → Google Flow** and click **Hubungkan Google Flow**.
+2. Bang Story installs Python, Chromium, and this server automatically when needed, then starts the local service. Docker and manual API-key setup are not required.
+3. Sign in directly with Google in the browser that opens. Complete any verification and continue until Google Flow opens. Bang Story captures the session over a private pipe and sends it to the authenticated local registration endpoint.
+4. The server verifies the signed-in identity against Google Flow before adding or updating the account. Successful connection selects Flow for images and videos in new Bang Story projects.
+5. Click **Tambah akun Google** for another account. Use **Hubungkan ulang** or **Hapus** in the account list. Each account has an isolated login profile; reconnecting with a different identity is rejected.
 
-Bang Story uses `http://127.0.0.1:8765`. Its local installer downloads Python and Chromium; Docker is not required. Reinstalling the server preserves its `data`, `tmp`, and `config/setting.toml` files; keep a separate backup before making other manual changes.
+Bang Story uses `http://127.0.0.1:8765`. If you already have an older local server installation, stop it and choose **Pengaturan lanjutan → Pasang ulang** to obtain the new login helper and registration API. Updating the desktop app alone does not replace server files. Reinstallation preserves `data`, `tmp`, and `config/setting.toml`.
 
-## Add a Google Flow account
+Browser/API tests use test doubles. Live Google authentication, account eligibility, quota, and generation still require account-level testing; Google may require verification or a fresh login.
 
-This version uses **complete Google/Flow cookies**, not a single old Session Token/ST.
+### Shared desktop login integration
+
+This fork now owns `src/services/browser_login.py`, the Windows browser-login helper used by Bang Story, and `POST /api/tokens/browser-session`, the admin-authenticated session handoff. Registration verifies the Flow account identity, updates duplicate emails, validates reconnect targets, and re-enables a previously disabled account only after validation. The response contains account metadata and no cookies or access tokens. See [the desktop integration contract](docs/desktop-login.md).
+
+## Add an account manually (advanced / standalone)
+
+Standalone server users can continue to use **Accounts → Add**. This fallback is also available in Bang Story's advanced panel; it is not required for the automatic desktop login.
 
 1. Sign in at `https://flow.google.com` and confirm that Flow opens for the intended account.
-2. Open browser **DevTools (F12) → Network**, reload Flow, select its document request, and copy the complete **Cookie** value from **Headers → Request Headers**. JSON cookie exports containing both Flow and Google cookies are also accepted.
-3. In **Accounts → Add**, paste into **Google Cookies** and enter the matching email in **Google Account**.
-4. Leave project and proxy fields empty unless you need them. Click **Add** and confirm that the account is enabled.
-5. If validation fails, sign in again and copy fresh, complete cookies. A working account check does not guarantee quota or successful generation.
+2. In browser **DevTools (F12) → Network**, reload Flow, select its document request, and copy the complete **Cookie** value from **Headers → Request Headers**. JSON exports containing Flow and Google cookies are also accepted.
+3. In **Accounts → Add**, paste into **Google Cookies**, enter the matching email in **Google Account**, and save. Leave project and proxy fields empty unless needed.
 
-The cookies must include a Flow session cookie (`OSID` or `__Secure-OSID`) and Google account cookies such as `SID`/`SAPISID`. An old `__Secure-next-auth.session-token` alone is insufficient.
+Cookies must include a Flow session cookie (`OSID` or `__Secure-OSID`) and Google account cookies such as `SID`/`SAPISID`. An old `__Secure-next-auth.session-token` alone is insufficient.
 
-Cookies and account export files contain sign-in credentials. Enter them only into your own server, do not commit them, and hide them in screenshots. The bundled **Captcha Worker** extension routes captcha requests; it is separate from a cookie-sync extension and does not import your account automatically.
+Cookies and account exports grant access to sign-in sessions. Keep them on your own server, out of commits, logs, screenshots, and support messages. Session cookies remain stored by the local browser and upstream database; this integration does not add database encryption. The Captcha Worker extension handles captcha requests and is separate from account login.
 
 ## Standalone Windows setup
 

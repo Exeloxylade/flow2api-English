@@ -8,6 +8,8 @@ import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import Optional, List, Dict, Any, Literal
 import secrets
@@ -36,13 +38,29 @@ from ..core.monitoring import build_public_health_snapshot
 from ..services.token_manager import TokenManager
 from ..services.proxy_manager import ProxyManager
 from ..services.concurrency_manager import ConcurrencyManager
+from ..services.browser_accounts import BrowserSessionError, register_browser_session
 
 try:
     import httpx
 except ImportError:
     httpx = None
 
+class BrowserSessionRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def safe_handler(request):
+            try:
+                return await handler(request)
+            except RequestValidationError:
+                # Pydantic's default error includes rejected input, which may contain cookies.
+                raise HTTPException(status_code=422, detail="Invalid browser session request") from None
+
+        return safe_handler
+
+
 router = APIRouter()
+browser_session_router = APIRouter(route_class=BrowserSessionRoute)
 
 # Dependency injection
 token_manager: TokenManager = None
@@ -50,6 +68,7 @@ proxy_manager: ProxyManager = None
 db: Database = None
 concurrency_manager: Optional[ConcurrencyManager] = None
 captcha_runtime_prepare_tasks: Dict[str, asyncio.Task] = {}
+browser_registration_lock = asyncio.Lock()
 
 # Store active admin session tokens (in production, use Redis or database)
 active_admin_tokens = set()
@@ -672,6 +691,22 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class BrowserSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    google_cookies: str = Field(min_length=1, max_length=524288)
+    login_account: str = Field(min_length=3, max_length=254)
+    expected_account_id: Optional[int] = Field(default=None, gt=0, strict=True)
+
+    @field_validator("login_account")
+    @classmethod
+    def validate_login_account(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", normalized):
+            raise ValueError("login_account must be a valid email address")
+        return normalized
+
+
 class AddTokenRequest(BaseModel):
     st: str = ""
     project_id: Optional[str] = None  # Optional user-supplied project_id
@@ -1092,6 +1127,31 @@ async def add_token(request: AddTokenRequest, token: str = Depends(verify_admin_
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Add Token failed: {str(e)}")
+
+
+@browser_session_router.post("/api/tokens/browser-session")
+async def connect_browser_session(
+    request: BrowserSessionRequest, token: str = Depends(verify_admin_token),
+):
+    """Verify identity and add or reconnect an account with an admin session."""
+    try:
+        async with browser_registration_lock:
+            return await register_browser_session(
+                token_manager, db, email=request.login_account,
+                google_cookies=request.google_cookies,
+                expected_account_id=request.expected_account_id,
+                concurrency_manager=concurrency_manager,
+            )
+    except BrowserSessionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except Exception:
+        # Upstream failures can include cookie values or request URLs.
+        raise HTTPException(
+            status_code=502, detail="Account registration failed. Sign in to Google Flow and try again",
+        ) from None
+
+
+router.include_router(browser_session_router)
 
 
 @router.put("/api/tokens/{token_id}")
