@@ -19,7 +19,10 @@ class BrowserBridgeTests(unittest.IsolatedAsyncioTestCase):
     async def test_captcha_failure_categories_have_safe_actionable_messages(self):
         for code, expected in [('captcha_script_failed', 'library could not load'),
                                ('captcha_timeout', 'did not finish'),
-                               ('captcha_rejected', 'API rejected')]:
+                               ('captcha_rejected', 'API rejected'),
+                               ('request_failed', 'captcha/request_failed'),
+                               ('private browser exception', 'captcha/unknown_error'),
+                               (['unexpected payload'], 'captcha/unknown_error')]:
             bridge = BrowserBridge()
             socket = SimpleNamespace(send_json=AsyncMock(), close=AsyncMock())
             await bridge.attach(1, socket)
@@ -31,6 +34,7 @@ class BrowserBridgeTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(RuntimeError, expected) as error:
                 await request
             self.assertNotIn('private details', str(error.exception))
+            self.assertNotIn('private browser exception', str(error.exception))
             self.assertFalse(bridge.pending)
 
     async def test_two_accounts_dispatch_only_to_their_own_socket(self):

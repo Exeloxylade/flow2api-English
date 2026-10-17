@@ -71,7 +71,11 @@ class BrowserBridge:
                     "captcha_timeout": "Google's CAPTCHA did not finish in the paired Flow tab. Bring that tab to the foreground, complete any verification shown there, then retry.",
                     "captcha_rejected": "Google's CAPTCHA API rejected the request or returned no token in the paired Flow tab. Try generating directly in that tab to check Google's verification. Re-pairing will not fix a CAPTCHA rejection.",
                 }
-                raise RuntimeError(messages.get(code, "The request failed inside the paired Flow tab. Check that tab and retry."))
+                safe_codes = set(messages) | {"request_failed", "invalid_operation"}
+                safe_code = code if isinstance(code, str) and code in safe_codes else "unknown_error"
+                step = "captcha" if operation == "captcha" else "rpc" if operation == "rpc" else "request"
+                message = messages.get(safe_code, "The request failed inside the paired Flow tab. Check that tab and retry.")
+                raise RuntimeError(f"{message} [{step}/{safe_code}]")
             return response.get("result")
         except asyncio.TimeoutError:
             raise RuntimeError("The paired Flow tab did not respond in time. Check that it is open and responsive.") from None
