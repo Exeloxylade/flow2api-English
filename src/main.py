@@ -2,6 +2,8 @@
 
 import asyncio
 import os
+import io
+import zipfile
 import sys
 import warnings
 
@@ -363,6 +365,19 @@ async def setup_page():
 @app.get("/dashboard-login.js")
 async def dashboard_login_script():
     return FileResponse(str(static_path / "dashboard-login.js"), media_type="text/javascript", headers=_STATIC_PAGE_NO_CACHE_HEADERS)
+
+
+@app.get("/flow-account-connector.zip")
+async def connector_download():
+    folder = Path(__file__).resolve().parent.parent / 'browser-extension'
+    bundle = io.BytesIO()
+    with zipfile.ZipFile(bundle, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for name in ('manifest.json', 'popup.html', 'popup.css', 'connector.js', 'popup.js', 'README.md'):
+            archive.write(folder / name, 'Flow-Account-Connector/' + name)
+    return Response(bundle.getvalue(), media_type='application/zip', headers={
+        'Content-Disposition': 'attachment; filename="Flow-Account-Connector.zip"',
+        'Cache-Control': 'no-store',
+    })
 
 
 @app.get("/metrics")

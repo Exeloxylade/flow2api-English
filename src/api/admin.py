@@ -41,7 +41,8 @@ from ..services.token_manager import TokenManager
 from ..services.proxy_manager import ProxyManager
 from ..services.concurrency_manager import ConcurrencyManager
 from ..services.browser_accounts import BrowserSessionError, register_browser_session
-from ..services.dashboard_login import DashboardLogin, DashboardSetupError
+from ..services.dashboard_login import DashboardSetupError
+from ..services.extension_login import ExtensionLogin
 
 try:
     import httpx
@@ -72,7 +73,7 @@ db: Database = None
 concurrency_manager: Optional[ConcurrencyManager] = None
 captcha_runtime_prepare_tasks: Dict[str, asyncio.Task] = {}
 browser_registration_lock = asyncio.Lock()
-dashboard_login = DashboardLogin()
+dashboard_login = ExtensionLogin()
 local_dashboard_ticket = os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET", "")
 local_dashboard_ticket_deadline = time.monotonic() + 180
 
@@ -1216,6 +1217,7 @@ async def dashboard_login_start(request: Request, body: DashboardConnectRequest,
             return result
 
     try:
+        dashboard_login.port = request.url.port or 80
         return await dashboard_login.start(register, email=email, account_id=body.expected_account_id)
     except DashboardSetupError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
@@ -1226,6 +1228,32 @@ async def dashboard_login_cancel(request: Request, body: DashboardCancelRequest,
     _ensure_local_dashboard(request)
     try:
         return await dashboard_login.cancel(body.job_id)
+    except DashboardSetupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+
+
+@browser_session_router.post("/api/browser-login/extension")
+async def extension_login_submit(request: Request, body: BrowserSessionRequest):
+    # Pairing is created through admin auth, but the extension receives only a one-use capability.
+    try:
+        if not ipaddress.ip_address(request.client.host).is_loopback or request.url.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError()
+        origin = request.headers.get('origin', '')
+        # Chromium versions may omit Origin for extensions with host permission.
+        # Ordinary web pages still supply an Origin and must never be accepted here.
+        if origin and not re.fullmatch(r'chrome-extension://[a-p]{32}', origin):
+            raise ValueError()
+        if request.headers.get('x-flow-connector') != '1':
+            raise ValueError()
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=403, detail='Connect from the browser extension to local Flow2API') from None
+    authorization = request.headers.get('authorization', '')
+    if not re.fullmatch(r'Bearer [a-f0-9]{64}', authorization):
+        raise HTTPException(status_code=401, detail='Create a fresh pairing code in the app')
+    if body.expected_account_id is not None:
+        raise HTTPException(status_code=422, detail='The app controls the reconnect target')
+    try:
+        return await dashboard_login.submit(authorization[7:], body.login_account, body.google_cookies)
     except DashboardSetupError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
 

@@ -12,31 +12,31 @@
   <nav><a href="/manage">Back to accounts</a><a href="/test">Test a model</a><a href="https://github.com/Exeloxylade/flow2api-English">English source</a></nav>
   <h1>Connect Google Flow to Bang Story</h1>
   <p>Flow2API is a community server that uses your own Google Flow session. Start with one account and one image model.</p>
-  <h2>Start here: easy Windows dashboard setup</h2>
+  <h2>1. Install Flow Account Connector once</h2>
   <ol>
-    <li>Extract the Windows portable package and double-click <strong>START - WIN.bat</strong>. Keep the console window open. The dashboard opens and signs in locally for you.</li>
-    <li>In <strong>Accounts</strong>, click <strong>Connect Google Flow</strong>. Chrome or Edge is used if available; otherwise the login browser is installed automatically.</li>
-    <li>Sign in directly with Google and open Flow. The dashboard verifies the account and configures local browser generation and automatic session refresh.</li>
-    <li>Click <strong>Add another Google account</strong> to add more. Use <strong>Reconnect Google</strong> beside an account to renew its session. Cancel and Retry are available if login is interrupted.</li>
+    <li><a href="/flow-account-connector.zip" download><strong>Download Flow Account Connector</strong></a> and extract the entire ZIP into a permanent folder.</li>
+    <li>Open <code>edge://extensions</code> or <code>chrome://extensions</code> in the browser profile you use for Google Flow.</li>
+    <li>Enable <strong>Developer mode</strong>, click <strong>Load unpacked</strong>, and choose the extracted <strong>Flow-Account-Connector</strong> folder containing <code>manifest.json</code>. Browser permission approval happens here.</li>
+    <li>Pin the extension from the browser’s Extensions menu so it is easy to open.</li>
   </ol>
-  <p>This runs on the Windows computer hosting Flow2API. Each account has an isolated login profile. Google verification, Flow access, and quota still apply. Remote or Docker servers can use the advanced manual import below.</p>
-  <h2>1. Connect from Bang Story</h2>
+  <p>This is a local developer extension, not a published Chrome/Edge store listing. Installation is a one-time manual step per browser profile. It never attaches browser automation to Google login.</p>
+  <h2>2. Connect the account in your own browser</h2>
   <ol>
-    <li>In the updated Bang Story app, open <strong>Pengaturan → Google Flow</strong> and click <strong>Hubungkan Google Flow</strong>.</li>
-    <li>Wait for the first-time installation of Python, server dependencies, and Chromium. Bang Story starts the local server and manages its admin login and API key.</li>
-    <li>Sign in directly with Google in the browser that opens. Complete any Google verification and continue until Google Flow opens.</li>
-    <li>The session is captured automatically. This server verifies the Flow identity and adds or reconnects the account. You do not need DevTools or pasted cookies.</li>
+    <li>In Bang Story, open <strong>Pengaturan → Google Flow → Hubungkan Google Flow</strong>. Or click <strong>Connect Google Flow</strong> in the standalone dashboard. First-time server installation is automatic.</li>
+    <li>Copy the pairing code shown by the app. It expires in 10 minutes and grants permission for one account connection.</li>
+    <li>Open <a href="https://flow.google.com/" target="_blank" rel="noreferrer">Google Flow</a> yourself in your normal Chrome/Edge profile. Sign in and click <strong>Create with Google Flow</strong> to enter the studio.</li>
+    <li>On that studio tab, open the <strong>Flow Account Connector</strong> extension. Paste the pairing code and click <strong>Connect this account</strong>. Keep the popup open until verification finishes.</li>
   </ol>
   <p>The matching browser-login integration requires an updated Bang Story build and this server revision. For an older local installation, stop the service and choose <strong>Pengaturan lanjutan → Pasang ulang</strong>. Accounts and settings are preserved.</p>
-  <h2>2. Add or reconnect accounts</h2>
+  <h2>Add or reconnect accounts</h2>
   <ol>
-    <li>Click <strong>Tambah akun Google</strong> in Bang Story to add another account with a separate browser profile.</li>
+    <li>For another account, switch to that account’s Chrome/Edge profile, install the extension there once, then click <strong>Tambah akun Google</strong> in Bang Story or <strong>Add another Google account</strong> in the dashboard and repeat pairing.</li>
     <li>Use <strong>Hubungkan ulang</strong> if an account needs a fresh session. Sign in with the same account; a different identity is rejected.</li>
-    <li>Use <strong>Hapus</strong> to remove an account and its managed login profile. Story projects are retained.</li>
+    <li>Use <strong>Hapus</strong> to remove an account from the local service. Your normal browser profile is retained.</li>
   </ol>
   <h2>3. Try a model</h2>
   <p>A successful connection selects Google Flow for new-project images and videos. For existing projects, select the provider and models in <strong>Ide cerita</strong>. Try one image first. An account check does not generate media or prove that generation quota is available.</p>
-  <div class="note">Google Flow eligibility, quota, verification, and browser requirements still apply. Session cookies grant account access and remain stored in your local browser and server database; do not share your data folder, exports, or credentials.</div>
+  <div class="note">The extension reads Google session cookies only when you explicitly click Connect and sends them directly to the paired server on 127.0.0.1. It does not store them or use an external extension service. Session cookies grant account access and are stored by Flow2API in its existing local database for renewal and generation. Google Flow eligibility, quota, verification, and browser requirements still apply.</div>
   <details>
     <summary><strong>Manual account import for standalone servers (advanced)</strong></summary>
     <ol>
@@ -48,7 +48,7 @@
   </details>
   <h2>Which key goes where?</h2>
   <dl>
-    <dt>Google Cookies</dt><dd>Google sign-in cookies, captured automatically by Bang Story or entered in the advanced account dialog.</dd>
+    <dt>Google Cookies</dt><dd>Google sign-in cookies transferred by the extension after your explicit connection, or entered in the advanced account dialog.</dd>
     <dt>Flow2API API key</dt><dd>The key used by applications calling the server. Bang Story manages it automatically in local mode. For an external server, use its API key in Bang Story.</dd>
     <dt>Admin password</dt><dd>Signs in to the admin panel. Bang Story manages this automatically for its local server.</dd>
     <dt>Gemini API key</dt><dd>A separate credential for Bang Story's Gemini story or narration provider. It is not a Flow2API key.</dd>

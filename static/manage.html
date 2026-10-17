@@ -81,20 +81,28 @@
             <section class="mb-6 rounded-lg border border-border bg-background p-5 space-y-4" aria-labelledby="flowSetupTitle">
                 <div>
                     <h3 id="flowSetupTitle" class="text-xl font-semibold">Connect Google Flow</h3>
-                    <p class="mt-1 text-sm text-muted-foreground">Sign in with Google. We prepare the browser, connect your account, and configure the local service automatically.</p>
+                    <p class="mt-1 text-sm text-muted-foreground">Sign in normally in your own Chrome or Edge. Use Flow Account Connector to connect the account already open in that browser.</p>
                 </div>
                 <ol class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground" aria-label="Setup steps">
-                    <li data-flow-step="preparing">1. Prepare automatically</li>
-                    <li data-flow-step="login">2. Sign in with Google</li>
+                    <li data-flow-step="preparing">1. Install connector once</li>
+                    <li data-flow-step="login">2. Sign in and pair your browser</li>
                     <li data-flow-step="ready">3. Ready to use</li>
                 </ol>
                 <p id="flowSetupStatus" role="status" class="text-sm">Checking local setup…</p>
+                <div id="flowPairing" hidden class="space-y-2">
+                    <label for="flowPairingCode" class="text-sm font-medium">One-use pairing code · expires in 10 minutes</label>
+                    <input id="flowPairingCode" readonly autocomplete="off" class="w-full rounded-md border border-input bg-background p-2 font-mono text-sm" aria-label="Pairing code">
+                    <button type="button" onclick="copyFlowPairingCode()" class="rounded-md border border-input px-3 py-2 text-sm">Copy pairing code</button>
+                    <p class="text-sm">On your signed-in Flow studio tab, open the extension, paste this code and click <strong>Connect this account</strong>. Keep the extension popup open until verification completes.</p>
+                </div>
                 <progress id="flowSetupProgress" aria-label="Connecting Google Flow" class="w-full" hidden></progress>
                 <div class="flex flex-wrap gap-3">
                     <button id="flowConnectButton" data-flow-connect onclick="startGoogleFlowLogin()" class="inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 h-10 px-4 text-sm font-medium">Connect Google Flow</button>
-                    <button id="flowCancelButton" onclick="cancelGoogleFlowLogin()" hidden class="rounded-md border border-input h-10 px-4 text-sm disabled:opacity-50">Cancel login</button>
+                    <button id="flowCancelButton" onclick="cancelGoogleFlowLogin()" hidden class="rounded-md border border-input h-10 px-4 text-sm disabled:opacity-50">Cancel connection</button>
+                    <a href="/setup" target="_blank" rel="noopener" class="rounded-md border border-input h-10 px-4 py-2 text-sm">Install connector / guide</a>
+                    <a href="https://flow.google.com/" target="_blank" rel="noreferrer" class="rounded-md border border-input h-10 px-4 py-2 text-sm">Open Google Flow</a>
                 </div>
-                <p class="text-xs text-muted-foreground">Use this dashboard on the Windows computer running Flow2API. Add more accounts with the same button; each gets its own login profile. Google verification, Flow access, and account quota still apply.</p>
+                <p class="text-xs text-muted-foreground">Use this dashboard on the computer running Flow2API. For more accounts, switch to that account’s own Chrome/Edge profile and pair again. The connector transfers Google session cookies to this local server only when you click Connect. Google verification, Flow access, and account quota still apply.</p>
             </section>
 
             <!-- Accounts -->

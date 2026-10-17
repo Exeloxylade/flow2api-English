@@ -10,35 +10,35 @@ The login page, account management panel, settings, request logs, model test pag
 
 1. Extract the Windows portable package and double-click **START - WIN.bat**. Keep its console window open while using Flow2API.
 2. Your local dashboard opens automatically; no admin password, Python commands, Docker, or API-key configuration is needed. The portable package includes Python and server dependencies. A source checkout can prepare its runtime through the included PowerShell setup script.
-3. In **Accounts**, click **Connect Google Flow**. The server uses installed Chrome or Edge, or installs its managed Chromium browser automatically.
-4. Sign in directly with Google and continue until Flow opens. The dashboard registers the verified account and configures local browser generation and automatic session refresh.
+3. Open **Install connector / guide** in the dashboard. Download and extract Flow Account Connector, then load its folder once through **edge://extensions** or **chrome://extensions → Developer mode → Load unpacked**.
+4. Click **Connect Google Flow** and copy the one-use pairing code. Sign in to Flow normally in your own browser profile and enter the creative studio. Open the connector extension on that tab, paste the code, and click **Connect this account**. Keep the popup open until verification completes.
 5. Click **Add another Google account** for more accounts. Use **Reconnect Google** beside an existing account when it needs a fresh login.
 
-Progress, Cancel, and Retry are built into the dashboard. Each account gets an isolated login profile. Existing server accounts and configuration are preserved; a new local installation gets private generated credentials. The launcher binds only to loopback and uses a short-lived, one-use local dashboard sign-in capability. If port 8000 is busy, it chooses an available port up to 8010 and opens the correct address for you.
+Progress, Cancel, and Retry are built into the dashboard. Use each account’s own Chrome/Edge profile and install the connector once in each profile. Existing server accounts and configuration are preserved; a new local installation gets private generated credentials. The launcher binds only to loopback and uses a short-lived, one-use local dashboard sign-in capability. If port 8000 is busy, it chooses an available port up to 8010 and opens the correct address for you.
 
-Automatic browser login runs on the Windows computer hosting the server. Remote/Docker deployments keep the manual import option; opening a remote dashboard cannot launch a browser on your own computer. Google verification, Flow access, account quota, and service restrictions still apply. A successful account connection does not guarantee generation quota.
+The connector sends Google session cookies only after your explicit click, directly to a paired loopback server on this computer. It does not attach debugging or automation to Google sign-in. A pairing code expires after 10 minutes and can be submitted once. The browser extension is a local developer package, not a published store listing. Remote/Docker deployments keep the manual import option; opening a remote dashboard cannot launch a browser on your own computer. Google verification, Flow access, account quota, and service restrictions still apply. A successful account connection does not guarantee generation quota.
 
 ## Use with Bang Story
 
-Use the updated [Bang Story repository](https://github.com/Exeloxylade/Bang-Story-free-version). The matching integration is proposed in [Bang Story PR #3](https://github.com/Exeloxylade/Bang-Story-free-version/pull/3).
+Use the updated [Bang Story repository](https://github.com/Exeloxylade/Bang-Story-free-version). Earlier integration work is documented in [Bang Story PR #3](https://github.com/Exeloxylade/Bang-Story-free-version/pull/3).
 
 1. Open **Pengaturan → Google Flow** and click **Hubungkan Google Flow**.
 2. Bang Story installs Python, Chromium, and this server automatically when needed, then starts the local service. Docker and manual API-key setup are not required.
-3. Sign in directly with Google in the browser that opens. Complete any verification and continue until Google Flow opens. Bang Story captures the session over a private pipe and sends it to the authenticated local registration endpoint.
+3. Click **Pasang extension / panduan** for the one-time connector installation. Copy Bang Story’s pairing code, open your normal signed-in Flow studio tab, then use the extension’s **Connect this account** button. Session cookies go directly from the browser to the paired local server; they do not pass through Bang Story’s renderer or main process.
 4. The server verifies the signed-in identity against Google Flow before adding or updating the account. Successful connection selects Flow for images and videos in new Bang Story projects.
-5. Click **Tambah akun Google** for another account. Use **Hubungkan ulang** or **Hapus** in the account list. Each account has an isolated login profile; reconnecting with a different identity is rejected.
+5. Click **Tambah akun Google** for another account. Use **Hubungkan ulang** or **Hapus** in the account list. Use a separate normal browser profile for each account; reconnecting with a different identity is rejected.
 
-Bang Story uses `http://127.0.0.1:8765`. If you already have an older local server installation, stop it and choose **Pengaturan lanjutan → Pasang ulang** to obtain the new login helper and registration API. Updating the desktop app alone does not replace server files. Reinstallation preserves `data`, `tmp`, and `config/setting.toml`.
+Bang Story uses `http://127.0.0.1:8765`. If you already have an older local server installation, stop it and choose **Pengaturan lanjutan → Pasang ulang** to obtain the connector and pairing API. Updating the desktop app alone does not replace server files. Reinstallation preserves `data`, `tmp`, and `config/setting.toml`.
 
 Browser/API tests use test doubles. Live Google authentication, account eligibility, quota, and generation still require account-level testing; Google may require verification or a fresh login.
 
 ### Shared desktop login integration
 
-This fork now owns `src/services/browser_login.py`, the Windows browser-login helper used by Bang Story, and `POST /api/tokens/browser-session`, the admin-authenticated session handoff. Registration verifies the Flow account identity, updates duplicate emails, validates reconnect targets, and re-enables a previously disabled account only after validation. The response contains account metadata and no cookies or access tokens. See [the desktop integration contract](docs/desktop-login.md).
+The default connection uses `browser-extension/` and `src/services/extension_login.py`. Admin-authenticated `/api/browser-login/start` creates a one-use local pairing; `/api/browser-login/extension` accepts the explicitly shared session. The older `browser_login.py` helper and `/api/tokens/browser-session` endpoint remain for compatibility, but the dashboard and updated Bang Story no longer launch the automated login helper. Registration verifies the Flow account identity, updates duplicate emails, validates reconnect targets, and re-enables a previously disabled account only after validation. The response contains account metadata and no cookies or access tokens. See [the desktop integration contract](docs/desktop-login.md).
 
 ## Add an account manually (advanced / standalone)
 
-Standalone server users can continue to use **Accounts → Add**. This fallback is also available in Bang Story's advanced panel; it is not required for the automatic desktop login.
+Standalone server users can continue to use **Accounts → Add**. This fallback is also available in Bang Story's advanced panel; it is not required for extension pairing.
 
 1. Sign in at `https://flow.google.com` and confirm that Flow opens for the intended account.
 2. In browser **DevTools (F12) → Network**, reload Flow, select its document request, and copy the complete **Cookie** value from **Headers → Request Headers**. JSON exports containing Flow and Google cookies are also accepted.

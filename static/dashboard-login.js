@@ -13,14 +13,16 @@
     }
     function render(value) {
         state = value;
+        el('flowPairing').hidden = !value.pairing_code;
+        el('flowPairingCode').value = value.pairing_code || '';
         el('flowSetupStatus').textContent = value.message;
         el('flowSetupStatus').setAttribute('role', value.phase === 'error' ? 'alert' : 'status');
         const supported = value.supported !== false;
         document.querySelectorAll('[data-flow-connect]').forEach(button => button.disabled = !!value.busy || !supported);
-        el('flowConnectButton').textContent = value.busy ? (value.phase === 'preparing' ? 'Preparing…' : value.phase === 'saving' ? 'Finishing setup…' : 'Waiting for Google login…') : (value.account || (typeof allTokens !== 'undefined' && allTokens.length) ? 'Add another Google account' : 'Connect Google Flow');
+        el('flowConnectButton').textContent = value.busy ? (value.phase === 'preparing' ? 'Preparing…' : value.phase === 'saving' ? 'Finishing setup…' : 'Waiting for connector…') : (value.account || (typeof allTokens !== 'undefined' && allTokens.length) ? 'Add another Google account' : 'Connect Google Flow');
         el('flowCancelButton').hidden = !value.busy;
         el('flowCancelButton').disabled = value.phase === 'saving';
-        el('flowSetupProgress').hidden = !value.busy;
+        el('flowSetupProgress').hidden = !value.busy || value.phase === 'login';
         document.querySelectorAll('[data-flow-step]').forEach(step => {
             step.classList.toggle('font-semibold', step.dataset.flowStep === value.phase);
         });
@@ -58,6 +60,10 @@
         if (!state?.job_id) return;
         try { const value = await request('/api/browser-login/cancel', {job_id:state.job_id}); if (value) render(value); }
         catch (error) { el('flowSetupStatus').textContent = error.message; }
+    };
+    window.copyFlowPairingCode = async function() {
+        try { await navigator.clipboard.writeText(el('flowPairingCode').value); }
+        catch { el('flowPairingCode').focus(); el('flowPairingCode').select(); el('flowSetupStatus').textContent = 'Press Ctrl+C to copy the selected pairing code.'; }
     };
     window.addEventListener('DOMContentLoaded', poll);
     window.addEventListener('flow-accounts-updated', () => { if (state && !state.busy) void poll(); });

@@ -1,6 +1,18 @@
 # Desktop browser login contract
 
-The automatic desktop flow consists of a local browser helper and an authenticated server handoff. Bang Story orchestrates installation, private browser profiles, cancellation, and account UI. The local Windows dashboard can also orchestrate this helper directly. Remote dashboards and Docker deployments keep manual import; a remote web page does not open a login browser on the visiting computer.
+## Current default: explicit browser-extension pairing
+
+The dashboard and Bang Story use `ExtensionLogin`, not the automated helper below. The user signs in normally in their own Chrome/Edge profile. `browser-extension/` contains a Manifest V3 popup with no content scripts, debugger permission, background collection, persistent cookie storage, or remote service.
+
+- Admin-authenticated, local same-origin `POST /api/browser-login/start` creates a one-use capability valid for 10 minutes. The authenticated status response includes `pairing_code` (`port:64-hex-token`) and a separate job ID. Pairing codes may be displayed/copied by the UI, but are never logged, placed in URLs, or persisted.
+- The extension operates only after an explicit click on a signed-in `https://flow.google.com` studio tab. It reads that tab's cookie store and Flow bootstrap email, then sends scoped unpartitioned Google cookies directly to `http://127.0.0.1:<paired-port>/api/browser-login/extension` using the capability as a Bearer token. Redirects are forbidden; no desktop IPC carries cookies.
+- The receiving endpoint requires a loopback peer and Host, an extension Origin if present, and `X-Flow-Connector: 1`. The high-entropy capability is required even when Chromium omits Origin for an extension with host permission. Web Origins are rejected. The endpoint grants no account-list or admin access.
+- The server consumes the capability before awaiting verification, independently verifies Flow identity using the existing registration function, binds reconnect to the target captured at pairing creation, and returns account metadata only. Verification is bounded to 120 seconds. Failed verification requires a new pairing code; input and upstream errors are sanitized.
+- Cancel invalidates a waiting pairing; an in-flight save is allowed to finish. Closing the extension popup does not cancel server verification, and the app can observe completion through authenticated polling. The extension must be installed manually once per normal browser profile through Load unpacked. `/setup` provides the guide and `/flow-account-connector.zip` provides a fixed allowlist of extension files.
+
+## Legacy integration (retained for compatibility)
+
+The previous desktop flow used a local browser helper and an authenticated server handoff. The helper remains available to older callers, but is not launched by the current dashboard or desktop connection. Google may reject sign-in browsers with automation attached. Remote dashboards and Docker deployments retain manual import.
 
 ## Browser helper (Windows)
 
