@@ -3,15 +3,23 @@ importScripts('page-bridge.js');
 const connections = new Map();
 let restoring = false;
 const identityInTab = async id => {
+  let timer;
   try {
-    const [value] = await chrome.scripting.executeScript({target: {tabId: id}, world: 'MAIN', func: () => location.origin === 'https://flow.google.com' ? String(window.WIZ_global_data?.oPEP7c || '').trim().toLowerCase() : ''});
+    const [value] = await Promise.race([
+      chrome.scripting.executeScript({target: {tabId: id}, world: 'MAIN', func: () => location.origin === 'https://flow.google.com' ? String(window.WIZ_global_data?.oPEP7c || '').trim().toLowerCase() : ''}),
+      new Promise(resolve => { timer = setTimeout(() => resolve([]), 2000); })
+    ]);
     return value?.result || '';
   } catch { return ''; }
+  finally { clearTimeout(timer); }
 };
 
 async function findAccountTab(binding) {
   if (await identityInTab(binding.tab_id) === binding.email) return binding.tab_id;
-  for (const tab of await chrome.tabs.query({url: 'https://flow.google.com/*'})) {
+  const tabs = await chrome.tabs.query({url: 'https://flow.google.com/*'});
+  tabs.sort((a, b) => Number(Boolean(b.active)) - Number(Boolean(a.active)) || (b.lastAccessed || 0) - (a.lastAccessed || 0));
+  for (const tab of tabs) {
+    if (tab.id === binding.tab_id) continue;
     if (await identityInTab(tab.id) === binding.email) return tab.id;
   }
   return null;
@@ -60,9 +68,8 @@ async function restoreBindings() {
   restoring = true;
   try {
     const {flowBridgeAccounts = {}} = await chrome.storage.local.get('flowBridgeAccounts');
-    for (const binding of Object.values(flowBridgeAccounts)) {
-      try { await connectBinding(binding); } catch { /* Wait for the signed-in tab; never open a new browser. */ }
-    }
+    // Old/deleted pairings and suspended tabs must not delay a valid account.
+    await Promise.allSettled(Object.values(flowBridgeAccounts).map(connectBinding));
   } finally { restoring = false; }
 }
 
