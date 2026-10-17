@@ -15,7 +15,7 @@ from unittest.mock import patch
 SOURCE = (Path(__file__).parent / '../src/services/browser_login.py').read_text(encoding='utf-8')
 
 class LoginTests(unittest.TestCase):
-    def run_helper(self, email='owner@example.com', expected='', host='flow.google.com', cookie_host='.google.com', closed=False):
+    def run_helper(self, email='owner@example.com', expected='', host='flow.google.com', cookie_host='.google.com', closed=False, blank=False, navigation_fails=False):
         with tempfile.TemporaryDirectory() as folder:
             state = {'closed': False, 'reads': 0}
             class Process:
@@ -29,14 +29,20 @@ class LoginTests(unittest.TestCase):
                 Path(folder, 'DevToolsActivePort').write_text('45678\n/devtools/browser/test')
                 return Process()
             class Page:
-                url = 'https://' + host + '/projects'
+                url = 'about:blank' if blank else 'https://' + host + '/projects'
+                async def goto(self, url, **kwargs):
+                    self_test.assertEqual(url, 'https://flow.google.com/')
+                    if navigation_fails:
+                        raise RuntimeError('private network error')
+                    Page.url = url
                 async def evaluate(self, js): return {'host': host, 'email': email}
                 def is_closed(self): return False
+            self_test = self
             class Context:
                 @property
                 def pages(self):
                     state['reads'] += 1
-                    return [] if closed or state['reads'] > 4 else [Page()]
+                    return [] if closed or state['reads'] > 20 else [Page()]
                 async def cookies(self): return [
                     {'name': 'OSID', 'value': 'fake', 'domain': cookie_host},
                     {'name': 'SID', 'value': 'fake', 'domain': cookie_host},
@@ -89,6 +95,25 @@ class LoginTests(unittest.TestCase):
 
     def test_invalid_identity_cannot_export_credentials(self):
         self.assertEqual(self.run_helper(email='not-an-email'), (2, ''))
+
+    def test_blank_startup_tab_navigates_to_flow(self):
+        self.assertEqual(self.run_helper(blank=True)[0], 0)
+
+    def test_navigation_failure_is_safe_and_distinct(self):
+        self.assertEqual(self.run_helper(blank=True, navigation_fails=True), (6, ''))
+
+    def test_managed_chromium_falls_back_to_installed_edge(self):
+        namespace = {'__name__': 'login_test'}
+        exec(compile(SOURCE, 'browser_login.py', 'exec'), namespace)
+        with tempfile.TemporaryDirectory() as folder:
+            edge = Path(folder) / 'Microsoft/Edge/Application/msedge.exe'
+            edge.parent.mkdir(parents=True)
+            edge.touch()
+            managed = str(Path(folder) / 'chromium-1248/chrome-win64/chrome.exe')
+            with patch.dict(os.environ, {'BROWSER_EXECUTABLE_PATH': managed, 'PROGRAMFILES': folder, 'PROGRAMFILES(X86)': '', 'LOCALAPPDATA': ''}):
+                self.assertEqual(namespace['login_executable'](), str(edge))
+            with patch.dict(os.environ, {'BROWSER_EXECUTABLE_PATH': 'custom-browser', 'PROGRAMFILES': folder}):
+                self.assertEqual(namespace['login_executable'](), 'custom-browser')
 
 if __name__ == '__main__':
     unittest.main()

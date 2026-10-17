@@ -129,7 +129,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize browser captcha service if needed
     browser_service = None
-    if captcha_config.captcha_method == "personal" and tokens and not os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET"):
+    if captcha_config.captcha_method == "personal" and tokens and not (os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET") or os.environ.get("FLOW_DEFER_BROWSER_WARMUP")):
         from .services.browser_captcha_personal import (
             BrowserCaptchaService,
             PERSONAL_POOL_MAX_TOTAL_RESIDENT_TABS,
@@ -178,7 +178,7 @@ async def lifespan(app: FastAPI):
             # 没有任何可用 token 时，打开登录窗口供用户手动操作
             await browser_service.open_login_window()
             print("No active token found, opened login window for manual setup")
-    elif captcha_config.captcha_method == "browser" and tokens and not os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET"):
+    elif captcha_config.captcha_method == "browser" and tokens and not (os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET") or os.environ.get("FLOW_DEFER_BROWSER_WARMUP")):
         from .services.browser_captcha import BrowserCaptchaService
 
         browser_service = await BrowserCaptchaService.get_instance(db)

@@ -99,7 +99,7 @@ class DashboardLogin:
                     raise DashboardSetupError('The login session could not be read. Try connecting again.')
             code = await self.process.wait()
             if code:
-                messages = {2: 'The login browser was closed. Click Connect to try again.', 3: 'Reconnect with the same Google account.', 4: 'Login timed out. Click Connect to try again.'}
+                messages = {2: 'The login browser was closed. Click Connect to try again.', 3: 'Reconnect with the same Google account.', 4: 'Login timed out. Click Connect to try again.', 6: 'Google Flow could not load. Check your internet connection and click Connect again.'}
                 raise DashboardSetupError(messages.get(code, 'The login browser could not complete setup. Try connecting again.'))
             try:
                 value = json.loads(output)
