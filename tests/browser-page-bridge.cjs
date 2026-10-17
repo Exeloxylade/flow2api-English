@@ -7,7 +7,7 @@ function fixture() {
   const calls = [];
   const sandbox = {URL, URLSearchParams, AbortSignal, setTimeout, clearTimeout, setInterval, clearInterval,
     window: {WIZ_global_data: {oPEP7c: 'owner@example.com', cfb2h: 'build', FdrFJe: '123', SNlM0e: 'private-xsrf'}},
-    location: {origin: 'https://flow.google.com', href: 'https://flow.google.com/projects'}, document: {documentElement: {innerHTML: ''}, querySelectorAll: () => []},
+    location: {origin: 'https://flow.google.com', href: 'https://flow.google.com/projects'}, document: {documentElement: {innerHTML: ''}, querySelectorAll: () => [], querySelector: () => null},
     fetch: async (url, options) => { calls.push({url, options}); return {status: 200, ok: true, text: async () => 'response-frames'}; }};
   vm.runInNewContext(source, sandbox);
   return {sandbox, calls, run: sandbox.runFlowOperation, job: {operation: 'rpc', rpc_id: 'nzlxg', argument: [], source_path: '/projects', email: 'owner@example.com'}};
@@ -102,6 +102,48 @@ test('CAPTCHA checks account and action before loading any scripts', async () =>
   f.sandbox.document.querySelectorAll = () => { throw new Error('should not inspect scripts'); };
   assert.equal((await f.run({...captchaJob, email: 'other@example.com'})).error_code, 'account_mismatch');
   assert.equal((await f.run({...captchaJob, action: 'arbitrary'})).error_code, 'invalid_operation');
+});
+
+test('CAPTCHA loader meets TrustedScriptURL enforcement and propagates the page nonce', async () => {
+  const f = fixture();
+  let policyCount = 0;
+  f.sandbox.window.trustedTypes = {createPolicy(name, rules) {
+    assert.equal(name, 'flow-account-connector#recaptcha');
+    policyCount++;
+    return {createScriptURL(value) { return {trusted: true, value: rules.createScriptURL(value)}; }};
+  }};
+  f.sandbox.document.querySelector = selector => { assert.equal(selector, 'script[nonce]'); return {nonce: 'page-nonce'}; };
+  f.sandbox.document.createElement = () => ({set src(value) {assert.equal(value.trusted, true); this.url=value.value;}, remove() {}});
+  f.sandbox.document.head = {appendChild(script) {
+    assert.equal(script.nonce, 'page-nonce');
+    assert.ok(script.url.startsWith('https://www.google.com/recaptcha/enterprise.js?render='));
+    f.sandbox.window.grecaptcha={enterprise:{ready: cb=>cb(),execute: async ()=>'verified-token'}};
+  }};
+  assert.equal((await f.run(captchaJob)).result.token, 'verified-token');
+  const policy=f.sandbox.window.__flowConnectorCaptchaURLPolicy;
+  for (const unsafe of ['https://evil.example/script.js','javascript:alert(1)','https://www.google.com/recaptcha/enterprise.js?render=123&extra=evil']) {
+    assert.throws(()=>policy.createScriptURL(unsafe));
+  }
+  delete f.sandbox.window.grecaptcha;
+  assert.equal((await f.run(captchaJob)).success, true);
+  assert.equal(policyCount, 1);
+});
+
+test('policy denial or script assignment failure cleans up and preserves page restrictions', async () => {
+  for (const mode of ['policy_denied','assignment_failed']) {
+    const f=fixture();
+    let activePolls=0;
+    f.sandbox.setInterval=(...args)=>{activePolls++; return setInterval(...args);};
+    f.sandbox.clearInterval=id=>{activePolls--;clearInterval(id);};
+    const originalFactory={createPolicy() {throw new TypeError('private CSP details');}};
+    if (mode==='policy_denied') f.sandbox.window.trustedTypes=originalFactory;
+    f.sandbox.document.createElement=()=>({set src(value) {throw new TypeError('TrustedScriptURL required');},remove(){}});
+    f.sandbox.document.head={appendChild(){assert.fail('blocked script must not be appended');}};
+    assert.equal((await f.run(captchaJob)).error_code, 'captcha_script_failed');
+    assert.equal(activePolls, 0);
+    assert.equal(f.sandbox.window.__flowConnectorCaptchaLoading, undefined);
+    if (mode==='policy_denied') assert.equal(f.sandbox.window.trustedTypes, originalFactory);
+  }
 });
 test('wrong account and arbitrary RPC/path never execute a request', async () => {
   const f = fixture();

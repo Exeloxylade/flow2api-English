@@ -29,7 +29,10 @@ async function runFlowOperation(job) {
             let script;
             let poll;
             let timer;
+            let settled = false;
             const finish = error => {
+              if (settled) return;
+              settled = true;
               clearInterval(poll); clearTimeout(timer);
               if (script) script.onerror = null;
               if (error) { if (script) script.remove(); reject(error); }
@@ -40,11 +43,32 @@ async function runFlowOperation(job) {
             }, 100);
             timer = setTimeout(() => finish(new Error('captcha_script_failed')), 15000);
             if (!existing) {
-              script = document.createElement('script');
-              script.src = 'https://www.google.com/recaptcha/enterprise.js?render=' + encodeURIComponent(siteKey);
-              script.async = true;
-              script.onerror = () => finish(new Error('captcha_script_failed'));
-              (document.head || document.documentElement).appendChild(script);
+              try {
+                script = document.createElement('script');
+                const url = 'https://www.google.com/recaptcha/enterprise.js?render=' + encodeURIComponent(siteKey);
+                let scriptURL = url;
+                if (window.trustedTypes) {
+                  // A named policy for this one Google loader only. Do not
+                  // install a permissive default policy or alter page CSP.
+                  if (!window.__flowConnectorCaptchaURLPolicy) {
+                    window.__flowConnectorCaptchaURLPolicy = window.trustedTypes.createPolicy('flow-account-connector#recaptcha', {
+                      createScriptURL(value) {
+                        if (!/^https:\/\/www\.google\.com\/recaptcha\/enterprise\.js\?render=[A-Za-z0-9_-]{20,100}$/.test(value)) throw new TypeError('Unsupported CAPTCHA script URL');
+                        return value;
+                      }
+                    });
+                  }
+                  scriptURL = window.__flowConnectorCaptchaURLPolicy.createScriptURL(url);
+                }
+                const nonce = document.querySelector('script[nonce]')?.nonce;
+                if (nonce) script.nonce = nonce;
+                script.src = scriptURL;
+                script.async = true;
+                script.onerror = () => finish(new Error('captcha_script_failed'));
+                (document.head || document.documentElement).appendChild(script);
+              } catch {
+                finish(new Error('captcha_script_failed'));
+              }
             }
           }).finally(() => { delete window.__flowConnectorCaptchaLoading; });
         }
@@ -57,7 +81,11 @@ async function runFlowOperation(job) {
         const timer = setTimeout(() => reject(new Error('captcha_timeout')), timeout);
         Promise.resolve().then(operation).then(resolve, reject).finally(() => clearTimeout(timer));
       });
-      await bounded(() => new Promise(resolve => readyOwner.ready(resolve)), 10000);
+      try {
+        await bounded(() => new Promise(resolve => readyOwner.ready(resolve)), 10000);
+      } catch (error) {
+        throw new Error(error?.message === 'captcha_timeout' ? 'captcha_timeout' : 'captcha_unavailable');
+      }
       let token;
       try {
         token = await bounded(() => api.execute(siteKey, {action: job.action}), 30000);
