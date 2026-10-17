@@ -39,7 +39,7 @@ from ..core.browser_runtime_status import (
 from ..core.monitoring import build_public_health_snapshot
 from ..services.token_manager import TokenManager
 from ..services.browser_bridge import browser_bridge
-from ..services.captcha_routing import CAPTCHA_METHODS
+from ..services.captcha_routing import CAPTCHA_METHODS, automatic_fallback_method
 from ..services.proxy_manager import ProxyManager
 from ..services.concurrency_manager import ConcurrencyManager
 from ..services.browser_accounts import BrowserSessionError, register_browser_session
@@ -2388,7 +2388,7 @@ async def get_captcha_config(token: str = Depends(verify_admin_token)):
     captcha_config = await db.get_captcha_config()
     return {
         "captcha_method": captcha_config.captcha_method if captcha_config.captcha_method_explicit else "auto",
-        "auto_fallback_method": captcha_config.captcha_method,
+        "auto_fallback_method": automatic_fallback_method(captcha_config.captcha_method),
         "yescaptcha_api_key": captcha_config.yescaptcha_api_key,
         "yescaptcha_base_url": captcha_config.yescaptcha_base_url,
         "yescaptcha_task_type": captcha_config.yescaptcha_task_type,
@@ -2449,6 +2449,8 @@ async def test_captcha_score(
     captcha_method = (
         (captcha_config.captcha_method or config.captcha_method or "").strip().lower()
     )
+    if not captcha_config.captcha_method_explicit:
+        captcha_method = automatic_fallback_method(captcha_method)
     if captcha_method == "paired_browser" or (
         not captcha_config.captcha_method_explicit
         and any(account.browser_bridge_hash for account in await db.get_all_tokens())

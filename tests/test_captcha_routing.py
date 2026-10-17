@@ -69,6 +69,8 @@ class CaptchaRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(resolve_captcha_method(method, paired=False), method)
             self.assertEqual(resolve_captcha_method(method, paired=True, explicit=True), method)
         self.assertEqual(resolve_captcha_method("personal", paired=True), "paired_browser")
+        self.assertEqual(resolve_captcha_method("paired_browser", paired=False), "personal")
+        self.assertEqual(resolve_captcha_method("paired_browser", paired=True), "paired_browser")
 
 
 class CaptchaSettingsTests(unittest.IsolatedAsyncioTestCase):
@@ -107,6 +109,13 @@ class CaptchaSettingsTests(unittest.IsolatedAsyncioTestCase):
             result = await admin.update_captcha_config({"captcha_method": invalid}, token="fixture")
             self.assertFalse(result["success"])
         self.assertFalse((await self.db.get_captcha_config()).captcha_method_explicit)
+
+    async def test_returning_from_paired_only_to_auto_has_a_valid_legacy_fallback(self):
+        await admin.update_captcha_config({"captcha_method": "paired_browser"}, token="fixture")
+        await admin.update_captcha_config({"captcha_method": "auto"}, token="fixture")
+        shown = await admin.get_captcha_config(token="fixture")
+        self.assertEqual(shown["captcha_method"], "auto")
+        self.assertEqual(shown["auto_fallback_method"], "personal")
 
     async def test_paired_score_test_does_not_start_managed_browser(self):
         await self.db.update_captcha_config(captcha_method="paired_browser", captcha_method_explicit=True)
