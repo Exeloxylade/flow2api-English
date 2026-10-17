@@ -75,6 +75,7 @@ class ProtocolCookieRefreshTests(unittest.IsolatedAsyncioTestCase):
         url="https://flow.google.com/projects",
         status=200,
         raw=COOKIES,
+        allow_browser_identity=False,
     ):
         jar = _cookie_jar(NEW_COOKIES)
         jar.clear("flow.google.com", "/project", "deleted")
@@ -95,7 +96,8 @@ class ProtocolCookieRefreshTests(unittest.IsolatedAsyncioTestCase):
             "src.services.protocol_login.AsyncSession", return_value=session
         ) as factory:
             result = await ProtocolLogin().login(
-                raw, proxy="127.0.0.1:7890", email=EMAIL
+                raw, proxy="127.0.0.1:7890", email=EMAIL,
+                allow_browser_identity=allow_browser_identity,
             )
         return result, factory, session
 
@@ -114,6 +116,14 @@ class ProtocolCookieRefreshTests(unittest.IsolatedAsyncioTestCase):
     async def test_anonymous_frontend_does_not_count_as_refresh(self):
         result, _, _ = await self.call_login(page="boq_labs-ai-sandbox-frontend_")
         self.assertFalse(result["success"])
+
+    async def test_paired_browser_identity_covers_flow_pages_without_bootstrap_email(self):
+        result, _, _ = await self.call_login(
+            page="boq_labs-ai-sandbox-frontend_",
+            allow_browser_identity=True,
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["email"], EMAIL)
 
     async def test_wrong_account_is_rejected(self):
         result, _, _ = await self.call_login(

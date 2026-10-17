@@ -32,7 +32,7 @@ class ExtensionPairingTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(self.service.status()['busy'])
             result = await self.service.submit(token, EMAIL, 'private-cookies')
         self.assertEqual(result, RESULT)
-        self.register.assert_awaited_once_with(EMAIL, 'private-cookies', None)
+        self.register.assert_awaited_once_with(EMAIL, 'private-cookies', None, True)
         self.assertFalse(self.service.status()['busy'])
         self.assertNotIn('private-cookies', json.dumps(self.service.status()))
         self.assertIsNone(self.service.status().get('pairing_code'))

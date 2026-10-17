@@ -75,7 +75,9 @@ class ExtensionLogin(DashboardLogin):
 
     async def _finish(self, email, cookies):
         try:
-            result = await asyncio.wait_for(self._register(email, cookies, self._account_id), timeout=120)
+            result = await asyncio.wait_for(
+                self._register(email, cookies, self._account_id, True), timeout=120
+            )
             self._report('ready', 'Account connected. Automatic session refresh is enabled.', account=result['account'])
         except Exception as exc:
             # Only fixed categories cross the local API; never expose exception text.

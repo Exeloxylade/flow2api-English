@@ -1205,11 +1205,12 @@ async def dashboard_login_start(request: Request, body: DashboardConnectRequest,
             raise HTTPException(status_code=404, detail="This account no longer exists. Refresh the dashboard")
         email = str(existing.login_account or existing.email).strip().lower()
 
-    async def register(identity, cookies, account_id):
+    async def register(identity, cookies, account_id, browser_identity=False):
         async with browser_registration_lock:
             result = await register_browser_session(
                 token_manager, db, email=identity, google_cookies=cookies,
                 expected_account_id=account_id, concurrency_manager=concurrency_manager,
+                trust_browser_identity=browser_identity,
             )
             try:
                 await db.update_captcha_config(captcha_method="personal")

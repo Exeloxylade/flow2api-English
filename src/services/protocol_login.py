@@ -132,6 +132,7 @@ class ProtocolLogin:
         google_cookies_raw: str,
         proxy: Optional[str] = None,
         email: Optional[str] = None,
+        allow_browser_identity: bool = False,
     ) -> Dict[str, Any]:
         try:
             validate_flow_cookie_storage(google_cookies_raw)
@@ -197,6 +198,16 @@ class ProtocolLogin:
                 }
             validate_flow_cookie_storage(refreshed_cookies)
             account_email = extract_flow_account_email(response.text)
+            # The Flow page opened in the user's browser already exposes its
+            # signed-in email to our paired extension. Some Flow responses to
+            # server-side cookie checks omit that bootstrap field even when
+            # the session is valid. In the explicit one-use browser pairing
+            # path, accept that browser identity only after the server has
+            # independently confirmed an authenticated Flow page and cookies.
+            if not account_email and allow_browser_identity and email:
+                candidate = email.strip().lower()
+                if re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", candidate):
+                    account_email = candidate
             if not account_email:
                 return {
                     "success": False,

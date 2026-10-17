@@ -13,7 +13,7 @@ class BrowserSessionError(ValueError):
 
 async def register_browser_session(
     manager, db, *, email, google_cookies, expected_account_id=None,
-    concurrency_manager=None,
+    concurrency_manager=None, trust_browser_identity=False,
 ):
     """The caller serializes registrations to prevent duplicate email insertions."""
     email = email.strip().lower()
@@ -26,7 +26,10 @@ async def register_browser_session(
 
     # A client-provided email is not proof of identity. Verify the signed-in Flow page first.
     proxy = getattr(existing, "proxy_url", None) if existing else None
-    verified = await protocol_loginer.login(google_cookies, proxy=proxy, email=email)
+    verified = await protocol_loginer.login(
+        google_cookies, proxy=proxy, email=email,
+        allow_browser_identity=trust_browser_identity,
+    )
     if not verified.get("success"):
         code = verified.get("error_code", "account_verification_failed")
         messages = {
