@@ -6,6 +6,18 @@ Flow2API exposes an OpenAI-compatible API for Google Flow image and video genera
 
 The login page, account management panel, settings, request logs, model test page, and bundled Captcha Worker settings are in English. The original upstream documentation is preserved in [README.zh-CN.md](README.zh-CN.md). The MIT license and original copyright notices are retained in [LICENSE](LICENSE).
 
+## Easy local Windows setup
+
+1. Extract the Windows portable package and double-click **START - WIN.bat**. Keep its console window open while using Flow2API.
+2. Your local dashboard opens automatically; no admin password, Python commands, Docker, or API-key configuration is needed. The portable package includes Python and server dependencies. A source checkout can prepare its runtime through the included PowerShell setup script.
+3. In **Accounts**, click **Connect Google Flow**. The server uses installed Chrome or Edge, or installs its managed Chromium browser automatically.
+4. Sign in directly with Google and continue until Flow opens. The dashboard registers the verified account and configures local browser generation and automatic session refresh.
+5. Click **Add another Google account** for more accounts. Use **Reconnect Google** beside an existing account when it needs a fresh login.
+
+Progress, Cancel, and Retry are built into the dashboard. Each account gets an isolated login profile. Existing server accounts and configuration are preserved; a new local installation gets private generated credentials. The launcher binds only to loopback and uses a short-lived, one-use local dashboard sign-in capability. If port 8000 is busy, it chooses an available port up to 8010 and opens the correct address for you.
+
+Automatic browser login runs on the Windows computer hosting the server. Remote/Docker deployments keep the manual import option; opening a remote dashboard cannot launch a browser on your own computer. Google verification, Flow access, account quota, and service restrictions still apply. A successful account connection does not guarantee generation quota.
+
 ## Use with Bang Story
 
 Use the updated [Bang Story repository](https://github.com/Exeloxylade/Bang-Story-free-version). The matching integration is proposed in [Bang Story PR #3](https://github.com/Exeloxylade/Bang-Story-free-version/pull/3).

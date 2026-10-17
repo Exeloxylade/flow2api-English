@@ -1,6 +1,6 @@
 # Desktop browser login contract
 
-The automatic desktop flow consists of a local browser helper and an authenticated server handoff. Bang Story orchestrates installation, private browser profiles, cancellation, and account UI. Standalone servers still support manual account import; this feature does not open a browser on a remote server.
+The automatic desktop flow consists of a local browser helper and an authenticated server handoff. Bang Story orchestrates installation, private browser profiles, cancellation, and account UI. The local Windows dashboard can also orchestrate this helper directly. Remote dashboards and Docker deployments keep manual import; a remote web page does not open a login browser on the visiting computer.
 
 ## Browser helper (Windows)
 
@@ -44,3 +44,17 @@ python -m compileall -q src
 ```
 
 The new tests exercise authentication, server-observed identity checks, duplicate and parallel logins, reconnect validation, response redaction, profile/browser shutdown, and cookie filtering using test doubles. They do not establish live Google login or generation success.
+
+## Dashboard setup and portable launcher
+
+The Accounts dashboard includes Connect Google Flow, progress, Cancel, Add another Google account, and per-account Reconnect Google. `dashboard_login.py` runs one bounded background job at a time. It reuses installed Chrome or Edge, installs managed Chromium if needed, captures a private helper result, and delegates registration to the verified session service. UUID profile mappings and the selected browser path persist under `data/browser-login/`. Deleting a dashboard account removes its profile mapping and managed profile. Account writes finish before shutdown; cancellation cannot interrupt the final save midway.
+
+After successful registration the dashboard configures the local `personal` browser captcha method and enables automatic protocol refresh. Existing account proxy, project, model-permission, and concurrency settings are preserved. Browser warmup is deferred when the local launcher starts so that stale accounts cannot block access to the repair dashboard.
+
+The admin-authenticated `/api/browser-login/start`, `/api/browser-login/status`, and `/api/browser-login/cancel` routes require the loopback client and a loopback Host, and reject cross-origin browser requests. Remote servers return a clear local-Windows requirement. The progress API contains status and public account metadata; it does not return the helper's cookies.
+
+`start_local.py` creates private credentials only for a new configuration, chooses a free loopback port, starts the server, and opens `/login` with a random one-use ticket in the URL fragment. The login page immediately removes the fragment and exchanges the ticket through `/api/local-dashboard` for an HttpOnly, SameSite=Strict admin cookie. Tickets expire after three minutes, require loopback/same-origin requests, and cannot be reused. Admin credentials are neither placed in a URL nor printed by the launcher. Existing manual admin login remains available.
+
+The portable Windows package includes the pinned Python runtime and installed dependencies, so its START launcher executes Python directly. The source bootstrap script verifies the Python download SHA-256 before extraction and installs requirements when their hash changes. It does not change PowerShell execution-policy settings.
+
+Dashboard service, endpoint, ticket, and clean-configuration tests live in `tests/test_dashboard_login.py`. UI checks use a simulated Google login fixture; actual Google authentication and media generation still require a real account.

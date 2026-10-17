@@ -1,6 +1,8 @@
 """Admin API routes"""
 
 import asyncio
+import ipaddress
+import os
 import hashlib
 import importlib
 import sys
@@ -39,6 +41,7 @@ from ..services.token_manager import TokenManager
 from ..services.proxy_manager import ProxyManager
 from ..services.concurrency_manager import ConcurrencyManager
 from ..services.browser_accounts import BrowserSessionError, register_browser_session
+from ..services.dashboard_login import DashboardLogin, DashboardSetupError
 
 try:
     import httpx
@@ -69,6 +72,9 @@ db: Database = None
 concurrency_manager: Optional[ConcurrencyManager] = None
 captcha_runtime_prepare_tasks: Dict[str, asyncio.Task] = {}
 browser_registration_lock = asyncio.Lock()
+dashboard_login = DashboardLogin()
+local_dashboard_ticket = os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET", "")
+local_dashboard_ticket_deadline = time.monotonic() + 180
 
 # Store active admin session tokens (in production, use Redis or database)
 active_admin_tokens = set()
@@ -707,6 +713,21 @@ class BrowserSessionRequest(BaseModel):
         return normalized
 
 
+class DashboardConnectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_account_id: Optional[int] = Field(default=None, gt=0, strict=True)
+
+
+class DashboardCancelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    job_id: str = Field(min_length=36, max_length=36)
+
+
+class LocalDashboardRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ticket: str = Field(min_length=32, max_length=128)
+
+
 class AddTokenRequest(BaseModel):
     st: str = ""
     project_id: Optional[str] = None  # Optional user-supplied project_id
@@ -1151,6 +1172,79 @@ async def connect_browser_session(
         ) from None
 
 
+def _ensure_local_dashboard(request: Request):
+    try:
+        peer = ipaddress.ip_address(request.client.host)
+        host = request.url.hostname
+        local_host = host == "localhost" or ipaddress.ip_address(host).is_loopback
+        if not peer.is_loopback or not local_host:
+            raise ValueError()
+        origin = request.headers.get("origin")
+        if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
+            raise ValueError()
+        if request.headers.get("sec-fetch-site") == "cross-site":
+            raise ValueError()
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=403, detail="Open the dashboard on this Windows computer using localhost to connect an account") from None
+
+
+@browser_session_router.get("/api/browser-login/status")
+async def dashboard_login_status(request: Request, token: str = Depends(verify_admin_token)):
+    _ensure_local_dashboard(request)
+    return dashboard_login.status()
+
+
+@browser_session_router.post("/api/browser-login/start")
+async def dashboard_login_start(request: Request, body: DashboardConnectRequest, token: str = Depends(verify_admin_token)):
+    _ensure_local_dashboard(request)
+    email = None
+    if body.expected_account_id is not None:
+        existing = await token_manager.get_token(body.expected_account_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="This account no longer exists. Refresh the dashboard")
+        email = str(existing.login_account or existing.email).strip().lower()
+
+    async def register(identity, cookies, account_id):
+        async with browser_registration_lock:
+            result = await register_browser_session(
+                token_manager, db, email=identity, google_cookies=cookies,
+                expected_account_id=account_id, concurrency_manager=concurrency_manager,
+            )
+            await db.update_captcha_config(captcha_method="personal")
+            await db.update_token_refresh_config(enabled=True)
+            await db.reload_config_to_memory()
+            return result
+
+    try:
+        return await dashboard_login.start(register, email=email, account_id=body.expected_account_id)
+    except DashboardSetupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+
+
+@browser_session_router.post("/api/browser-login/cancel")
+async def dashboard_login_cancel(request: Request, body: DashboardCancelRequest, token: str = Depends(verify_admin_token)):
+    _ensure_local_dashboard(request)
+    try:
+        return await dashboard_login.cancel(body.job_id)
+    except DashboardSetupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+
+
+@browser_session_router.post("/api/local-dashboard")
+async def local_dashboard_login(request: Request, body: LocalDashboardRequest, response: Response):
+    """Consume the launcher's short-lived, one-use local dashboard capability."""
+    global local_dashboard_ticket
+    _ensure_local_dashboard(request)
+    if not local_dashboard_ticket or time.monotonic() > local_dashboard_ticket_deadline or not secrets.compare_digest(body.ticket, local_dashboard_ticket):
+        raise HTTPException(status_code=401, detail="Local launch expired. Restart START - WIN or sign in normally")
+    local_dashboard_ticket = ""
+    os.environ.pop("FLOW_LOCAL_DASHBOARD_TICKET", None)
+    session_token = f"admin-{secrets.token_urlsafe(32)}"
+    active_admin_tokens.add(session_token)
+    response.set_cookie(key=ADMIN_SESSION_COOKIE_NAME, value=session_token, httponly=True, samesite="strict", path="/")
+    return {"success": True}
+
+
 router.include_router(browser_session_router)
 
 
@@ -1232,8 +1326,13 @@ async def update_token(
 @router.delete("/api/tokens/{token_id}")
 async def delete_token(token_id: int, token: str = Depends(verify_admin_token)):
     """Delete token"""
+    if dashboard_login.status()["busy"]:
+        raise HTTPException(status_code=409, detail="Finish or cancel the current Google login before deleting an account")
     try:
+        existing = await token_manager.get_token(token_id)
         await token_manager.delete_token(token_id)
+        if existing:
+            dashboard_login.forget(existing.login_account or existing.email)
         if concurrency_manager:
             await concurrency_manager.remove_token(token_id)
         return {"success": True, "message": "Token Deleted"}
