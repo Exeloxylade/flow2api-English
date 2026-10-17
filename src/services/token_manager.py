@@ -960,6 +960,7 @@ class TokenManager:
             result = await protocol_loginer.login(
                 token.google_cookies, proxy=proxy_url or None,
                 email=token.login_account or token.email or None,
+                allow_browser_identity=True,
             )
             if not result.get("success"):
                 raise RuntimeError(str(result.get("error") or "Flow Cookie 刷新失败"))
