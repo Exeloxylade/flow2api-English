@@ -8,14 +8,63 @@ async function runFlowOperation(job) {
     if (email !== String(job.email || '').toLowerCase()) throw new Error('account_mismatch');
     if (job.operation === 'captcha') {
       if (!['IMAGE_GENERATION', 'VIDEO_GENERATION'].includes(job.action)) throw new Error('invalid_operation');
-      const api = window.grecaptcha?.enterprise;
-      if (!api?.execute || !api?.ready) throw new Error('captcha_unavailable');
-      await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('captcha_unavailable')), 10000);
-        api.ready(() => { clearTimeout(timer); resolve(); });
+      // Credits do not load reCAPTCHA. Bootstrap the normal Google library in
+      // this same signed-in tab, without replacing its methods or page hooks.
+      let siteKey = '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV';
+      const scripts = Array.from(document.querySelectorAll('script[src]'));
+      const existing = scripts.find(script => {
+        try {
+          const url = new URL(script.src, location.href);
+          return ['www.google.com', 'www.recaptcha.net'].includes(url.hostname) && url.pathname === '/recaptcha/enterprise.js';
+        } catch { return false; }
       });
-      const token = await api.execute('6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV', {action: job.action});
-      if (!token) throw new Error('captcha_unavailable');
+      if (existing) {
+        const renderedKey = new URL(existing.src, location.href).searchParams.get('render');
+        if (renderedKey && /^[A-Za-z0-9_-]{20,100}$/.test(renderedKey)) siteKey = renderedKey;
+      }
+      if (typeof window.grecaptcha?.enterprise?.execute !== 'function') {
+        // Share only the loading promise across simultaneous jobs, never tokens.
+        if (!window.__flowConnectorCaptchaLoading) {
+          window.__flowConnectorCaptchaLoading = new Promise((resolve, reject) => {
+            let script;
+            let poll;
+            let timer;
+            const finish = error => {
+              clearInterval(poll); clearTimeout(timer);
+              if (script) script.onerror = null;
+              if (error) { if (script) script.remove(); reject(error); }
+              else resolve();
+            };
+            poll = setInterval(() => {
+              if (typeof window.grecaptcha?.enterprise?.execute === 'function') finish();
+            }, 100);
+            timer = setTimeout(() => finish(new Error('captcha_script_failed')), 15000);
+            if (!existing) {
+              script = document.createElement('script');
+              script.src = 'https://www.google.com/recaptcha/enterprise.js?render=' + encodeURIComponent(siteKey);
+              script.async = true;
+              script.onerror = () => finish(new Error('captcha_script_failed'));
+              (document.head || document.documentElement).appendChild(script);
+            }
+          }).finally(() => { delete window.__flowConnectorCaptchaLoading; });
+        }
+        await window.__flowConnectorCaptchaLoading;
+      }
+      const api = window.grecaptcha?.enterprise;
+      const readyOwner = typeof api?.ready === 'function' ? api : window.grecaptcha;
+      if (typeof api?.execute !== 'function' || typeof readyOwner?.ready !== 'function') throw new Error('captcha_unavailable');
+      const bounded = (operation, timeout) => new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('captcha_timeout')), timeout);
+        Promise.resolve().then(operation).then(resolve, reject).finally(() => clearTimeout(timer));
+      });
+      await bounded(() => new Promise(resolve => readyOwner.ready(resolve)), 10000);
+      let token;
+      try {
+        token = await bounded(() => api.execute(siteKey, {action: job.action}), 30000);
+      } catch (error) {
+        throw new Error(error.message === 'captcha_timeout' ? 'captcha_timeout' : 'captcha_rejected');
+      }
+      if (typeof token !== 'string' || !token.trim()) throw new Error('captcha_rejected');
       return {success: true, result: {token}};
     }
     const allowed = ['jHPbke', 'QI2zvc', 'nzlxg', 'as29s', 'cz8Z4b', 'maseQ', 'ogiZ0b', 'SPrCad', 'jwpduf', 'mrlkwd', 'GN0Bre', 'MZZa6b', 'nprQif', 'eb1hJf', 'fZytfe', 'p0UkFb', 'YhhmEf'];
@@ -42,7 +91,7 @@ async function runFlowOperation(job) {
     }
     throw new Error('authentication_required');
   } catch (error) {
-    const allowedErrors = ['authentication_required', 'account_mismatch', 'page_not_ready', 'captcha_unavailable', 'invalid_operation'];
+    const allowedErrors = ['authentication_required', 'account_mismatch', 'page_not_ready', 'captcha_unavailable', 'captcha_script_failed', 'captcha_timeout', 'captcha_rejected', 'invalid_operation'];
     return {success: false, error_code: allowedErrors.includes(error.message) ? error.message : 'request_failed'};
   }
 }

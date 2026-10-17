@@ -16,6 +16,23 @@ from src.services.token_manager import TokenManager
 
 
 class BrowserBridgeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_captcha_failure_categories_have_safe_actionable_messages(self):
+        for code, expected in [('captcha_script_failed', 'library could not load'),
+                               ('captcha_timeout', 'did not finish'),
+                               ('captcha_rejected', 'API rejected')]:
+            bridge = BrowserBridge()
+            socket = SimpleNamespace(send_json=AsyncMock(), close=AsyncMock())
+            await bridge.attach(1, socket)
+            request = asyncio.create_task(bridge.call(1, 'a@example.com', 'captcha'))
+            await asyncio.sleep(0)
+            job = socket.send_json.call_args.args[0]
+            bridge.receive(socket, {'req_id': job['req_id'], 'success': False,
+                                    'error_code': code, 'message': 'private details'})
+            with self.assertRaisesRegex(RuntimeError, expected) as error:
+                await request
+            self.assertNotIn('private details', str(error.exception))
+            self.assertFalse(bridge.pending)
+
     async def test_two_accounts_dispatch_only_to_their_own_socket(self):
         bridge = BrowserBridge()
         a = SimpleNamespace(send_json=AsyncMock(), close=AsyncMock())

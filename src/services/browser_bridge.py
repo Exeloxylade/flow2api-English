@@ -67,6 +67,9 @@ class BrowserBridge:
                     "page_not_ready": "The paired Flow studio is not ready. Open its creative studio and leave the tab open.",
                     "authentication_required": "Google requires sign-in in the paired Flow tab. Sign in there, then retry.",
                     "captcha_unavailable": "The paired Flow tab could not provide CAPTCHA. Open the creative studio and retry.",
+                    "captcha_script_failed": "Google's CAPTCHA library could not load in the paired Flow tab. Check that tab for blocked scripts or network errors, reload it, then retry. Pairing is still saved.",
+                    "captcha_timeout": "Google's CAPTCHA did not finish in the paired Flow tab. Bring that tab to the foreground, complete any verification shown there, then retry.",
+                    "captcha_rejected": "Google's CAPTCHA API rejected the request or returned no token in the paired Flow tab. Try generating directly in that tab to check Google's verification. Re-pairing will not fix a CAPTCHA rejection.",
                 }
                 raise RuntimeError(messages.get(code, "The request failed inside the paired Flow tab. Check that tab and retry."))
             return response.get("result")

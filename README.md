@@ -38,7 +38,7 @@ The default connection uses `browser-extension/` and `src/services/extension_log
 
 ### Keep the paired browser connected
 
-For local browser pairing, use **Flow Account Connector 1.1.0** from the dashboard's connector download. Reload the extension after updating its files and reconnect each existing account once with a fresh code. Keep each account's signed-in Flow studio tab open (use a separate Chrome/Edge profile per account). The panel displays **Browser online/offline**. Credit checks, project creation, CAPTCHA and image generation execute inside that exact tab and verify its account identity before each request. Server/browser restarts reconnect automatically when the matching Flow tab is open; a disconnected tab does not launch a different browser or disable its account. A pairing key is saved in extension-local storage; its hash is stored by the local server.
+For local browser pairing, use **Flow Account Connector 1.1.1** from the dashboard's connector download. Reload the extension after updating its files in the same folder. Only upgrades from 1.0.x need a fresh pairing; 1.1.0 pairings remain valid. Keep each account's signed-in Flow studio tab open (use a separate Chrome/Edge profile per account). The panel displays **Browser online/offline**. Credit checks, project creation, CAPTCHA and image generation execute inside that exact tab and verify its account identity before each request. Server/browser restarts reconnect automatically when the matching Flow tab is open; a disconnected tab does not launch a different browser or disable its account. A pairing key is saved in extension-local storage; its hash is stored by the local server.
 
 ## Add an account manually (advanced / standalone)
 
