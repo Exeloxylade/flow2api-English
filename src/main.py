@@ -129,7 +129,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize browser captcha service if needed
     browser_service = None
-    if captcha_config.captcha_method == "personal":
+    if captcha_config.captcha_method == "personal" and tokens and not os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET"):
         from .services.browser_captcha_personal import (
             BrowserCaptchaService,
             PERSONAL_POOL_MAX_TOTAL_RESIDENT_TABS,
@@ -178,7 +178,7 @@ async def lifespan(app: FastAPI):
             # 没有任何可用 token 时，打开登录窗口供用户手动操作
             await browser_service.open_login_window()
             print("No active token found, opened login window for manual setup")
-    elif captcha_config.captcha_method == "browser":
+    elif captcha_config.captcha_method == "browser" and tokens and not os.environ.get("FLOW_LOCAL_DASHBOARD_TICKET"):
         from .services.browser_captcha import BrowserCaptchaService
 
         browser_service = await BrowserCaptchaService.get_instance(db)
@@ -232,6 +232,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     print("Flow2API Shutting down...")
+    await admin.dashboard_login.close()
     # Stop file cache cleanup task
     await generation_handler.file_cache.stop_cleanup_task()
     # Stop auto-unban task
@@ -357,6 +358,11 @@ async def test_page(request: Request):
 async def setup_page():
     """Local English setup guide; contains no account data."""
     return _static_page_response(static_path / "setup.html")
+
+
+@app.get("/dashboard-login.js")
+async def dashboard_login_script():
+    return FileResponse(str(static_path / "dashboard-login.js"), media_type="text/javascript", headers=_STATIC_PAGE_NO_CACHE_HEADERS)
 
 
 @app.get("/metrics")
