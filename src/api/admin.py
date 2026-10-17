@@ -1063,6 +1063,9 @@ async def get_tokens(token: str = Depends(verify_admin_token)):
             else None,
         "use_count": row.get("use_count"),
         "credits": row.get("credits"),  # 🆕 Credits
+        "credits_updated_at": to_iso(row.get("credits_updated_at"))
+        if row.get("credits_updated_at")
+        else None,
         "user_paygate_tier": row.get("user_paygate_tier"),
         "current_project_id": row.get("current_project_id"),  # 🆕 Project ID
         "current_project_name": row.get("current_project_name"),  # 🆕 Project name
@@ -2989,6 +2992,11 @@ async def plugin_check_tokens(
             ),
             "last_st_refresh_result": row.get("last_st_refresh_result") or "",
             "credits": row.get("credits", 0),
+            "credits_updated_at": (
+                row.get("credits_updated_at").isoformat()
+                if hasattr(row.get("credits_updated_at"), "isoformat")
+                else row.get("credits_updated_at")
+            ),
             }
         )
 

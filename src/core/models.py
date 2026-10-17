@@ -26,6 +26,7 @@ class Token(BaseModel):
 
     # VideoFX特有字段
     credits: int = 0  # 剩余credits
+    credits_updated_at: Optional[datetime] = None  # Last successful live balance check
     user_paygate_tier: Optional[str] = None  # PAYGATE_TIER_ONE
 
     # 项目管理

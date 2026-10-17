@@ -225,7 +225,11 @@ class TokenManager:
     async def _get_credits_for_token(self, token: Token, at: str) -> Dict[str, Any]:
         return await self._flow_call_for_token(
             token,
-            lambda: self.flow_client.get_credits(at),
+            lambda: self.flow_client.get_credits(
+                at,
+                google_cookies=token.google_cookies,
+                token_id=token.id,
+            ),
         )
 
     async def get_personal_warmup_project_ids(
@@ -439,10 +443,16 @@ class TokenManager:
         except Exception as e:
             raise ValueError(f"Google Cookie 验证失败：{str(e)}")
 
+        credits_updated_at = None
         try:
-            credits_result = await self.flow_client.get_credits(at)
+            credits_result = result
+            if "credits" not in credits_result:
+                credits_result = await self.flow_client.get_credits(
+                    at, google_cookies=google_cookies
+                )
             credits = credits_result.get("credits", 0)
             user_paygate_tier = credits_result.get("userPaygateTier")
+            credits_updated_at = datetime.now(timezone.utc)
         except Exception:
             credits = 0
             user_paygate_tier = None
@@ -495,6 +505,7 @@ class TokenManager:
             remark=remark,
             is_active=True,
             credits=credits,
+            credits_updated_at=credits_updated_at,
             user_paygate_tier=user_paygate_tier,
             current_project_id=pooled_projects[0].project_id,
             current_project_name=pooled_projects[0].project_name,
@@ -667,7 +678,12 @@ class TokenManager:
             at_expires_aware = token.at_expires
 
         time_until_expiry = at_expires_aware - now
-        if time_until_expiry.total_seconds() < 3600:
+        # Flow frontend accounts use a short-lived marker AT that is valid only
+        # together with that account's stored Google cookies. Refreshing it an
+        # hour early caused newly paired accounts (55-minute lifetime) to enter
+        # the refresh/browser path immediately. Keep using a valid AT and its
+        # account-bound cookies until it is close to actual expiry.
+        if time_until_expiry.total_seconds() < 300:
             debug_logger.log_info(
                 f"[AT_CHECK] Token {token.id}: AT即将过期 "
                 f"(剩余 {time_until_expiry.total_seconds():.0f} 秒),需要刷新"
@@ -696,6 +712,7 @@ class TokenManager:
                     token.id,
                     credits=credits_result.get("credits", 0),
                     user_paygate_tier=credits_result.get("userPaygateTier"),
+                    credits_updated_at=datetime.now(timezone.utc),
                 )
                 self._mark_at_valid(token.id)
                 return await self.db.get_token(token.id) or token
@@ -839,17 +856,22 @@ class TokenManager:
             debug_logger.log_info(f"[AT_REFRESH] Token {token_id}: AT刷新成功")
             debug_logger.log_info(f"  - 新过期时间: {new_at_expires}")
 
-            # 验证 AT 有效性：通过 get_credits 测试
+            # Current Flow's ST->AT response already validates this account's
+            # cookie-bound session and includes its balance. Use that result to
+            # avoid a second lookup that could lose the per-account context.
             try:
-                credits_result = await (
-                    self._get_credits_for_token(token, new_at)
-                    if token is not None
-                    else self.flow_client.get_credits(new_at)
-                )
+                credits_result = result
+                if "credits" not in credits_result:
+                    credits_result = await (
+                        self._get_credits_for_token(token, new_at)
+                        if token is not None
+                        else self.flow_client.get_credits(new_at)
+                    )
                 await self.db.update_token(
                     token_id,
                     credits=credits_result.get("credits", 0),
                     user_paygate_tier=credits_result.get("userPaygateTier"),
+                    credits_updated_at=datetime.now(timezone.utc),
                 )
                 self._mark_at_valid(token_id)
                 debug_logger.log_info(
@@ -916,6 +938,7 @@ class TokenManager:
         }
         if "credits" in session:
             updates["credits"] = session["credits"]
+            updates["credits_updated_at"] = datetime.now(timezone.utc)
         if "userPaygateTier" in session:
             updates["user_paygate_tier"] = session["userPaygateTier"]
         saved = await self.db.update_token_if_cookie_matches(
@@ -1271,6 +1294,7 @@ class TokenManager:
                 token_id,
                 credits=credits,
                 user_paygate_tier=user_paygate_tier,
+                credits_updated_at=datetime.now(timezone.utc),
             )
 
             return credits

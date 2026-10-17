@@ -49,7 +49,9 @@ class BrowserSessionTests(unittest.IsolatedAsyncioTestCase):
         response = await self.connect()
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json(), {'success': True, 'action': 'added', 'account': {'id': 7, 'email': EMAIL, 'enabled': True}})
-        self.login.assert_awaited_once_with(COOKIES, proxy=None, email=EMAIL)
+        self.login.assert_awaited_once_with(
+            COOKIES, proxy=None, email=EMAIL, allow_browser_identity=False
+        )
         self.manager.save_verified_browser_account.assert_awaited_once()
         self.concurrency.reset_token.assert_awaited_once_with(7, image_concurrency=2, video_concurrency=1)
         self.assertNotIn('private-', response.text)

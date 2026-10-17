@@ -517,6 +517,7 @@ class Database:
                     ("at", "TEXT"),  # Access Token
                     ("at_expires", "TIMESTAMP"),  # AT expiration time
                     ("credits", "INTEGER DEFAULT 0"),  # Balance
+                    ("credits_updated_at", "TIMESTAMP"),  # Last successful balance check
                     ("user_paygate_tier", "TEXT"),  # User tier
                     ("current_project_id", "TEXT"),  # Current project UUID
                     ("current_project_name", "TEXT"),  # Project name
@@ -755,6 +756,7 @@ class Database:
                     last_used_at TIMESTAMP,
                     use_count INTEGER DEFAULT 0,
                     credits INTEGER DEFAULT 0,
+                    credits_updated_at TIMESTAMP,
                     user_paygate_tier TEXT,
                     current_project_id TEXT,
                     current_project_name TEXT,
@@ -1125,13 +1127,13 @@ class Database:
             cursor = await db.execute(
                 """
                 INSERT INTO tokens (st, at, at_expires, email, name, remark, is_active,
-                                   credits, user_paygate_tier, current_project_id, current_project_name,
+                                   credits, credits_updated_at, user_paygate_tier, current_project_id, current_project_name,
                                    image_enabled, video_enabled, image_concurrency, video_concurrency,
                                    captcha_proxy_url, extension_route_key,
                                    protocol_mode, google_cookies, login_account, login_password,
                                    proxy_url, auto_refresh_enabled, refresh_interval_minutes,
                                    last_st_refresh_at, last_st_refresh_result)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     token.st,
@@ -1142,6 +1144,7 @@ class Database:
                     token.remark,
                     token.is_active,
                     token.credits,
+                    token.credits_updated_at,
                     token.user_paygate_tier,
                     token.current_project_id,
                     token.current_project_name,
@@ -1300,7 +1303,7 @@ class Database:
                 SELECT
                     COUNT(*) AS total_tokens,
                     COALESCE(SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END), 0) AS active_tokens,
-                    COALESCE(SUM(CASE WHEN is_active = 1 THEN credits ELSE 0 END), 0) AS total_credits
+                    COALESCE(SUM(CASE WHEN is_active = 1 AND credits_updated_at IS NOT NULL THEN credits ELSE 0 END), 0) AS total_credits
                 FROM tokens
             """)
             row = await cursor.fetchone()
@@ -1351,7 +1354,7 @@ class Database:
         """Save a refresh without overwriting a newer account Cookie push."""
         allowed = {
             "google_cookies", "st", "at", "at_expires", "credits",
-            "user_paygate_tier", "last_st_refresh_at", "last_st_refresh_result",
+            "user_paygate_tier", "credits_updated_at", "last_st_refresh_at", "last_st_refresh_result",
         }
         if not kwargs or not set(kwargs).issubset(allowed):
             raise ValueError("Invalid cookie refresh fields")
