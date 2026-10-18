@@ -279,3 +279,37 @@ test('video media lookup accepts its exact editor route without opening other RP
  }
  assert.equal(f.calls.length,1)
 })
+
+
+test('account selector follows each tab native RPC when account switch removed it from the address bar', async () => {
+  for (const index of ['0','1']) {
+    const f=fixture()
+    f.sandbox.performance={getEntriesByType:()=>[
+      {name:'https://attacker.example/_/AiSandboxAngularFrontend/data/batchexecute?f.sid=123&authuser=9'},
+      {name:'https://flow.google.com/_/AiSandboxAngularFrontend/data/batchexecute?f.sid=123&authuser='+index}
+    ]}
+    assert.equal((await f.run(f.job)).success,true)
+    assert.equal(new URL(f.calls[0].url,'https://flow.google.com').searchParams.get('authuser'),index)
+    assert.equal(f.calls.length,1)
+  }
+  const f=fixture();f.sandbox.location.href+='?authuser=2'
+  f.sandbox.performance={getEntriesByType:()=>[{name:'https://flow.google.com/_/AiSandboxAngularFrontend/data/batchexecute?f.sid=123&authuser=1'}]}
+  await f.run(f.job)
+  assert.equal(new URL(f.calls[0].url,'https://flow.google.com').searchParams.get('authuser'),'2')
+})
+
+test('network failures and HTTP rejections retain only fixed diagnostics without retrying submission', async () => {
+  for (const status of [400,404,409,429,500,502,503]) {
+    const f=fixture();let count=0
+    f.sandbox.fetch=async()=>{count++;return {status,ok:false,text:async()=> 'private-cookie'}}
+    const result=await f.run(f.job)
+    assert.equal(result.error_code,'http_'+status);assert.equal(count,1)
+    assert.ok(!JSON.stringify(result).includes('private-cookie'))
+  }
+  for (const name of ['TypeError','TimeoutError']) {
+    const f=fixture();f.sandbox.fetch=async()=>{throw Object.assign(new Error('private-url'),{name})}
+    const result=await f.run(f.job)
+    assert.equal(result.error_code,name==='TimeoutError'?'request_timeout':'network_error')
+    assert.ok(!JSON.stringify(result).includes('private-url'))
+  }
+})

@@ -115,22 +115,38 @@ async function runFlowOperation(job) {
     let xsrf = String(wiz.SNlM0e || '');
     if (!bl || !sid || !xsrf) throw new Error('page_not_ready');
     const query = new URLSearchParams({rpcids: job.rpc_id, 'source-path': job.source_path, bl, 'f.sid': sid, hl: 'en', _reqid: String(Math.floor(Math.random() * 80000) + 10000), rt: 'c'});
-    const authuser = new URL(location.href).searchParams.get('authuser');
-    if (authuser && /^\d+$/.test(authuser)) query.set('authuser', authuser);
+    // Preserve the account selector actually used by this page. Account switching
+    // can remove it from the address bar while native RPCs still carry it.
+    const pageUrl = new URL(location.href);
+    let authuser = pageUrl.searchParams.get('authuser') ?? pageUrl.pathname.match(/^\/u\/(\d+)(?:\/|$)/)?.[1];
+    if (authuser == null && typeof performance !== 'undefined' && performance.getEntriesByType) {
+      for (const entry of performance.getEntriesByType('resource').slice().reverse()) {
+        try {
+          const native = new URL(entry.name);
+          if (native.origin !== location.origin || native.pathname !== '/_/AiSandboxAngularFrontend/data/batchexecute') continue;
+          if (native.searchParams.get('f.sid') !== sid) continue;
+          const selector = native.searchParams.get('authuser');
+          if (selector !== null && /^\d+$/.test(selector)) { authuser = selector; break; }
+        } catch { /* Resource metadata never leaves this page. */ }
+      }
+    }
+    if (authuser !== undefined && authuser !== null && (/^\d+$/.test(authuser) || authuser.toLowerCase() === email)) query.set('authuser', authuser);
     const url = '/_/AiSandboxAngularFrontend/data/batchexecute?' + query;
     for (let attempt = 0; attempt < 2; attempt++) {
       const body = new URLSearchParams({'f.req': JSON.stringify([[[job.rpc_id, JSON.stringify(job.argument), null, 'generic']]]), at: xsrf});
-      const response = await fetch(url, {method: 'POST', credentials: 'include', redirect: 'error', headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'x-same-domain': '1'}, body: body.toString(), signal: AbortSignal.timeout(120000)});
+      let response;
+      try { response = await fetch(url, {method: 'POST', credentials: 'include', redirect: 'error', headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'x-same-domain': '1'}, body: body.toString(), signal: AbortSignal.timeout(Math.max(250, Math.min(110000, (Number(job.timeout_ms) || 120000) - 2000)))}); }
+      catch (error) { throw new Error(['AbortError', 'TimeoutError'].includes(error?.name) ? 'request_timeout' : 'network_error'); }
       if (response.status === 401 || response.status === 403) throw new Error('authentication_required');
       const text = await response.text();
-      if (!response.ok) throw new Error('request_failed');
+      if (!response.ok) throw new Error([400, 404, 409, 429, 500, 502, 503].includes(response.status) ? `http_${response.status}` : 'request_failed');
       const replacement = text.match(/\["xsrf"\s*,\s*"((?:\\.|[^"\\])*)"/);
       if (attempt === 0 && replacement) { xsrf = JSON.parse('"' + replacement[1] + '"'); continue; }
       return {success: true, result: {text}};
     }
     throw new Error('authentication_required');
   } catch (error) {
-    const allowedErrors = ['authentication_required', 'account_mismatch', 'page_not_ready', 'captcha_native_reload_required', 'captcha_unavailable', 'captcha_script_failed', 'captcha_script_policy', 'captcha_library_unavailable', 'captcha_timeout', 'captcha_rejected', 'invalid_operation'];
+    const allowedErrors = ['authentication_required', 'account_mismatch', 'page_not_ready', 'captcha_native_reload_required', 'captcha_unavailable', 'captcha_script_failed', 'captcha_script_policy', 'captcha_library_unavailable', 'captcha_timeout', 'captcha_rejected', 'invalid_operation', 'request_timeout', 'network_error', 'http_400', 'http_404', 'http_409', 'http_429', 'http_500', 'http_502', 'http_503'];
     return {success: false, error_code: allowedErrors.includes(error.message) ? error.message : 'request_failed'};
   }
 }

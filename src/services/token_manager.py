@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, List
@@ -1293,6 +1294,27 @@ class TokenManager:
         token = await self.db.get_token(token_id)
         if not token:
             raise ValueError(f"Token {token_id} was not found")
+
+        if token.browser_bridge_hash:
+            # The live account-bound credit RPC is itself the verification. The
+            # legacy AT path queried credits repeatedly before this same lookup.
+            try:
+                result = await self._get_credits_for_token(token, token.at or self.flow_client.FRONTEND_ACCESS_TOKEN)
+                credits = result["credits"]
+                await self.db.update_token(
+                    token_id, credits=credits, user_paygate_tier=result.get("userPaygateTier"),
+                    credits_updated_at=datetime.now(timezone.utc),
+                    at=token.at or self.flow_client.FRONTEND_ACCESS_TOKEN,
+                    at_expires=datetime.now(timezone.utc) + timedelta(minutes=55),
+                    last_st_refresh_at=datetime.now(timezone.utc), last_st_refresh_result="Browser session verified",
+                )
+                self._mark_at_valid(token_id)
+                return credits
+            except Exception as exc:
+                match = re.search(r"\[(?:rpc|browser)/(account_mismatch|authentication_required|page_not_ready|request_timeout|network_error|request_failed|http_400|http_404|http_409|http_429|http_500|http_502|http_503)\]", str(exc))
+                safe_reason = f"Browser credit check failed {match.group(0)}" if match else "Browser credit check failed [rpc/request_failed]"
+                await self.db.update_token(token_id, last_st_refresh_at=datetime.now(timezone.utc), last_st_refresh_result=safe_reason)
+                raise RuntimeError(safe_reason) from None
 
         # 确保AT有效
         token = await self.ensure_valid_token(token)

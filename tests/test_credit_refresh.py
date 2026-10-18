@@ -77,3 +77,33 @@ class CreditRefreshTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PairedCreditRefreshTests(unittest.IsolatedAsyncioTestCase):
+    async def test_two_accounts_verify_once_each_and_zero_is_a_valid_balance(self):
+        from types import SimpleNamespace
+        accounts={i:Token(id=i,st='marker',at='marker',email=f'account{i}@example.com',browser_bridge_hash='hash') for i in [7,8]}
+        db=SimpleNamespace(get_token=AsyncMock(side_effect=lambda i: accounts[i]), update_token=AsyncMock())
+        flow=SimpleNamespace(get_request_fingerprint=lambda:None,_set_request_fingerprint=lambda value:None,
+            get_credits=AsyncMock(side_effect=[{'credits':12},{'credits':0}]))
+        manager=TokenManager(db,flow);manager.ensure_valid_token=AsyncMock(side_effect=AssertionError('legacy verification used'))
+        self.assertEqual(await manager.refresh_credits(7),12)
+        self.assertEqual(await manager.refresh_credits(8),0)
+        self.assertEqual([call.kwargs['token_id'] for call in flow.get_credits.await_args_list],[7,8])
+        self.assertEqual(flow.get_credits.await_count,2)
+        self.assertIsNotNone(db.update_token.await_args_list[-1].kwargs['credits_updated_at'])
+        self.assertEqual(db.update_token.await_args_list[-1].kwargs['last_st_refresh_result'],'Browser session verified')
+        manager.ensure_valid_token.assert_not_awaited()
+
+    async def test_second_account_failure_preserves_its_pairing_and_first_account(self):
+        from types import SimpleNamespace
+        token=Token(id=8,st='marker',at='marker',email='second@example.com',browser_bridge_hash='hash')
+        db=SimpleNamespace(get_token=AsyncMock(return_value=token),update_token=AsyncMock())
+        flow=SimpleNamespace(get_request_fingerprint=lambda:None,_set_request_fingerprint=lambda value:None,
+            get_credits=AsyncMock(side_effect=RuntimeError('private-session [rpc/http_400]')))
+        manager=TokenManager(db,flow)
+        with self.assertRaisesRegex(RuntimeError,r'rpc/http_400') as error: await manager.refresh_credits(8)
+        self.assertNotIn('private-session',str(error.exception))
+        self.assertEqual(db.update_token.await_args.args,(8,))
+        self.assertNotIn('browser_bridge_hash',db.update_token.await_args.kwargs)
+        self.assertNotIn('credits',db.update_token.await_args.kwargs)

@@ -63,6 +63,14 @@ class BrowserBridge:
                 # Never echo a browser exception/URL/body into account logs.
                 code = response.get("error_code")
                 messages = {
+                    "network_error": "The paired Flow tab could not reach Google. Check that profile's network, proxy, and blocking extensions.",
+                    "http_400": "Google rejected the paired tab request (HTTP 400). Refresh that account's studio to renew its page session.",
+                    "http_404": "The Flow request endpoint was not found (HTTP 404). Refresh the studio and check connector compatibility.",
+                    "http_409": "Google reported a conflicting Flow request (HTTP 409). Wait and check the studio.",
+                    "http_429": "Google rate limited this Flow account (HTTP 429). Wait before checking again.",
+                    "http_500": "Google Flow returned a server error (HTTP 500). Try checking again later.",
+                    "http_502": "Google Flow returned a gateway error (HTTP 502). Try checking again later.",
+                    "http_503": "Google Flow is temporarily unavailable (HTTP 503). Try checking again later.",
                     "account_mismatch": "The paired Flow tab is signed in to a different account. Open the matching account's tab.",
                     "request_timeout": "The paired Flow tab request timed out. Its outcome is unknown; check the existing Flow task before retrying. Reload an unresponsive Flow tab.",
                     "page_not_ready": "The paired Flow studio is not ready. Open its creative studio and leave the tab open.",
