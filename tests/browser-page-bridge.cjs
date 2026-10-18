@@ -37,7 +37,7 @@ test('CAPTCHA loads the Google library once for concurrent jobs and executes eac
   }};
   const results = await Promise.all([f.run(captchaJob), f.run(captchaJob)]);
   assert.equal(scripts.length, 1);
-  assert.equal(scripts[0].src, 'https://www.google.com/recaptcha/enterprise.js?render=6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV');
+  assert.equal(scripts[0].src, 'https://www.google.com/recaptcha/enterprise.js?render=6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV&trustedtypes=true');
   assert.ok(results.every(value => value.success));
   assert.notEqual(results[0].result.token, results[1].result.token);
   assert.equal(executions.length, 2);
@@ -117,11 +117,12 @@ test('CAPTCHA loader meets TrustedScriptURL enforcement and propagates the page 
   f.sandbox.document.head = {appendChild(script) {
     assert.equal(script.nonce, 'page-nonce');
     assert.ok(script.url.startsWith('https://www.google.com/recaptcha/enterprise.js?render='));
+    assert.equal(new URL(script.url).searchParams.get('trustedtypes'), 'true');
     f.sandbox.window.grecaptcha={enterprise:{ready: cb=>cb(),execute: async ()=>'verified-token'}};
   }};
   assert.equal((await f.run(captchaJob)).result.token, 'verified-token');
   const policy=f.sandbox.window.__flowConnectorCaptchaURLPolicy;
-  for (const unsafe of ['https://evil.example/script.js','javascript:alert(1)','https://www.google.com/recaptcha/enterprise.js?render=123&extra=evil']) {
+  for (const unsafe of ['https://evil.example/script.js','javascript:alert(1)','https://www.google.com/recaptcha/enterprise.js?render=123&extra=evil', 'https://www.google.com/recaptcha/enterprise.js?render=6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV', 'https://www.google.com/recaptcha/enterprise.js?render=6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV&trustedtypes=true&extra=evil']) {
     assert.throws(()=>policy.createScriptURL(unsafe));
   }
   delete f.sandbox.window.grecaptcha;
@@ -168,4 +169,31 @@ test('an existing failed loader reports promptly and preserves page handlers and
   f.sandbox.document.querySelectorAll=()=>[script];
   const result=f.run(captchaJob); listener();
   assert.equal((await result).error_code,'captcha_script_failed'); assert.equal(script.onerror,handler); assert.equal(removed,1);
+});
+
+
+test('both bootstrap and nested Google script obey Trusted Types without a default policy', async () => {
+  const f=fixture(); const loaded=[], policies=[];
+  const trusted = new WeakSet();
+  f.sandbox.window.trustedTypes={createPolicy(name,rules) {
+    assert.notEqual(name,'default'); policies.push(name);
+    return {createScriptURL(value) { const result={url:rules.createScriptURL(value)}; trusted.add(result); return result }}
+  }};
+  f.sandbox.document.createElement=()=>({set src(value) {
+    if (!trusted.has(value)) throw new TypeError('TrustedScriptURL required');
+    this.url=value.url;
+  },remove(){}});
+  f.sandbox.document.head={appendChild(script) {
+    loaded.push(script.url);
+    // Model the two forms served by Google's bootstrap, not just an instantly ready API.
+    const url='https://www.gstatic.com/recaptcha/releases/test/recaptcha__en.js';
+    const child=f.sandbox.document.createElement('script');
+    const ttMode=new URL(script.url).searchParams.get('trustedtypes')==='true';
+    child.src=ttMode ? f.sandbox.window.trustedTypes.createPolicy('recaptcha',{createScriptURL:()=>url}).createScriptURL('') : url;
+    loaded.push(child.url);
+    f.sandbox.window.grecaptcha={enterprise:{ready: cb=>cb(),execute:async()=>'nested-loader-token'}};
+  }};
+  const result=await f.run(captchaJob);
+  assert.equal(result.result.token,'nested-loader-token'); assert.equal(loaded.length,2);
+  assert.deepEqual(policies,['flow-account-connector#recaptcha','recaptcha']);
 });

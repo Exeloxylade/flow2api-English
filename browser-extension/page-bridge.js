@@ -49,7 +49,9 @@ async function runFlowOperation(job) {
             if (!existing) {
               try {
                 script = document.createElement('script');
-                const url = 'https://www.google.com/recaptcha/enterprise.js?render=' + encodeURIComponent(siteKey);
+                // The Google bootstrap creates another script. Its Trusted Types mode
+                // is required for that nested load as well as our first assignment.
+                const url = 'https://www.google.com/recaptcha/enterprise.js?render=' + encodeURIComponent(siteKey) + '&trustedtypes=true';
                 let scriptURL = url;
                 if (window.trustedTypes) {
                   // A named policy for this one Google loader only. Do not
@@ -57,7 +59,7 @@ async function runFlowOperation(job) {
                   if (!window.__flowConnectorCaptchaURLPolicy) {
                     window.__flowConnectorCaptchaURLPolicy = window.trustedTypes.createPolicy('flow-account-connector#recaptcha', {
                       createScriptURL(value) {
-                        if (!/^https:\/\/www\.google\.com\/recaptcha\/enterprise\.js\?render=[A-Za-z0-9_-]{20,100}$/.test(value)) throw new TypeError('Unsupported CAPTCHA script URL');
+                        if (!/^https:\/\/www\.google\.com\/recaptcha\/enterprise\.js\?render=[A-Za-z0-9_-]{20,100}&trustedtypes=true$/.test(value)) throw new TypeError('Unsupported CAPTCHA script URL');
                         return value;
                       }
                     });

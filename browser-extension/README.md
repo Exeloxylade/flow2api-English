@@ -30,3 +30,6 @@ CAPTCHA diagnostics (connector 1.1.4):
 - `captcha_rejected`: the API was available but execution rejected or returned no token.
 
 A connected account and a working credit balance do not prove CAPTCHA is available. Re-pairing does not repair page security restrictions or a rejected CAPTCHA. Select a separately configured CAPTCHA method in the dashboard if the paired page cannot supply it, or generate directly in Flow. No alternate method is guaranteed to be accepted by Google.
+
+
+Connector 1.1.5 loads Google reCAPTCHA with `trustedtypes=true`. This enables Google's own narrow policy for its nested gstatic script. A TrustedScriptURL for the initial enterprise.js URL alone does not make that nested load compatible. No default policy is installed and page security is preserved. Reload the extension after updating its files; pairing is retained. This fixes a loader compatibility defect, but does not guarantee Google accepts a generated token.
