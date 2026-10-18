@@ -552,8 +552,14 @@ class CurrentFlowClientMixin:
     ) -> dict:
         await self._frontend_cookie(google_cookies, token_id)
         max_retries = max(1, int(self._get_runtime_config().flow_max_retries or 1))
+        # Match upstream's retired relaxed-alias fallback without replaying uncertain submissions.
+        paired_browser = bool(await self._paired_browser_account(token_id))
+        request_model_key = str(model_key or "").strip()
+        standard_model_key = request_model_key.replace("_relaxed", "")
+        fallback_used = False
+        attempt_budget = max(max_retries, 2 if standard_model_key != request_model_key else 1)
         last_error: Optional[Exception] = None
-        for retry_attempt in range(max_retries):
+        for retry_attempt in range(attempt_budget):
             browser_id = None
             try:
                 token, browser_id = await self._get_recaptcha_token(
@@ -567,7 +573,7 @@ class CurrentFlowClientMixin:
                 rpc_id, argument = self._build_frontend_video_generation_argument(
                     project_id=project_id,
                     prompt=prompt,
-                    model_key=model_key,
+                    model_key=request_model_key,
                     aspect_ratio=aspect_ratio,
                     recaptcha_token=token,
                     # Protocol requests use an independent session id instead of
@@ -592,15 +598,24 @@ class CurrentFlowClientMixin:
                     payload,
                     project_id=project_id,
                     aspect_ratio=aspect_ratio,
-                    model_key=model_key,
+                    model_key=request_model_key,
                     rpc_id=rpc_id,
                 )
             except Exception as error:
                 last_error = error
-                # MODEL_ACCESS_DENIED 为账号权限拒绝，重试不会改变结果
-                if "MODEL_ACCESS_DENIED" in str(error):
+                error_text = str(error)
+                if "MODEL_ACCESS_DENIED" in error_text or "PUBLIC_ERROR_UNUSUAL_ACTIVITY" in error_text:
                     raise
-                if retry_attempt >= max_retries - 1:
+                missing_model = bool(
+                    re.search(r"code\s*=\s*\[5\]", error_text)
+                    or re.search(r"\bNOT_FOUND\b", error_text, re.IGNORECASE)
+                )
+                if missing_model and not fallback_used and standard_model_key != request_model_key:
+                    request_model_key = standard_model_key
+                    fallback_used = True
+                    debug_logger.log_warning("Flow rejected the relaxed video alias; trying its standard key once")
+                    continue
+                if paired_browser or fallback_used or retry_attempt >= max_retries - 1:
                     raise
             finally:
                 await self._notify_browser_captcha_request_finished(browser_id)
