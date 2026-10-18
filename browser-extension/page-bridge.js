@@ -56,15 +56,15 @@ async function runFlowOperation(job) {
                 if (window.trustedTypes) {
                   // A named policy for this one Google loader only. Do not
                   // install a permissive default policy or alter page CSP.
-                  if (!window.__flowConnectorCaptchaURLPolicy) {
-                    window.__flowConnectorCaptchaURLPolicy = window.trustedTypes.createPolicy('flow-account-connector#recaptcha', {
+                  if (!window.__flowConnectorCaptchaURLPolicyV2) {
+                    window.__flowConnectorCaptchaURLPolicyV2 = window.trustedTypes.createPolicy('flow-account-connector#recaptcha-v2', {
                       createScriptURL(value) {
                         if (!/^https:\/\/www\.google\.com\/recaptcha\/enterprise\.js\?render=[A-Za-z0-9_-]{20,100}&trustedtypes=true$/.test(value)) throw new TypeError('Unsupported CAPTCHA script URL');
                         return value;
                       }
                     });
                   }
-                  scriptURL = window.__flowConnectorCaptchaURLPolicy.createScriptURL(url);
+                  scriptURL = window.__flowConnectorCaptchaURLPolicyV2.createScriptURL(url);
                 }
                 const nonce = document.querySelector('script[nonce]')?.nonce;
                 if (nonce) script.nonce = nonce;

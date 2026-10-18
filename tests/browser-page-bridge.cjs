@@ -106,9 +106,12 @@ test('CAPTCHA checks account and action before loading any scripts', async () =>
 
 test('CAPTCHA loader meets TrustedScriptURL enforcement and propagates the page nonce', async () => {
   const f = fixture();
+  // An extension update must not reuse the old page policy, whose URL
+  // allowlist rejected the new Google parameter. No page reload is required.
+  f.sandbox.window.__flowConnectorCaptchaURLPolicy = {createScriptURL() {throw new Error('stale policy')}};
   let policyCount = 0;
   f.sandbox.window.trustedTypes = {createPolicy(name, rules) {
-    assert.equal(name, 'flow-account-connector#recaptcha');
+    assert.equal(name, 'flow-account-connector#recaptcha-v2');
     policyCount++;
     return {createScriptURL(value) { return {trusted: true, value: rules.createScriptURL(value)}; }};
   }};
@@ -121,7 +124,7 @@ test('CAPTCHA loader meets TrustedScriptURL enforcement and propagates the page 
     f.sandbox.window.grecaptcha={enterprise:{ready: cb=>cb(),execute: async ()=>'verified-token'}};
   }};
   assert.equal((await f.run(captchaJob)).result.token, 'verified-token');
-  const policy=f.sandbox.window.__flowConnectorCaptchaURLPolicy;
+  const policy=f.sandbox.window.__flowConnectorCaptchaURLPolicyV2;
   for (const unsafe of ['https://evil.example/script.js','javascript:alert(1)','https://www.google.com/recaptcha/enterprise.js?render=123&extra=evil', 'https://www.google.com/recaptcha/enterprise.js?render=6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV', 'https://www.google.com/recaptcha/enterprise.js?render=6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV&trustedtypes=true&extra=evil']) {
     assert.throws(()=>policy.createScriptURL(unsafe));
   }
@@ -195,5 +198,5 @@ test('both bootstrap and nested Google script obey Trusted Types without a defau
   }};
   const result=await f.run(captchaJob);
   assert.equal(result.result.token,'nested-loader-token'); assert.equal(loaded.length,2);
-  assert.deepEqual(policies,['flow-account-connector#recaptcha','recaptcha']);
+  assert.deepEqual(policies,['flow-account-connector#recaptcha-v2','recaptcha']);
 });
