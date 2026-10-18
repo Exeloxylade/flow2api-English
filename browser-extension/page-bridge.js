@@ -106,7 +106,9 @@ async function runFlowOperation(job) {
     }
     const allowed = ['jHPbke', 'QI2zvc', 'nzlxg', 'as29s', 'cz8Z4b', 'maseQ', 'ogiZ0b', 'SPrCad', 'jwpduf', 'mrlkwd', 'GN0Bre', 'MZZa6b', 'nprQif', 'eb1hJf', 'fZytfe', 'p0UkFb', 'YhhmEf'];
     if (job.operation !== 'rpc' || !allowed.includes(job.rpc_id) || !Array.isArray(job.argument)) throw new Error('invalid_operation');
-    if (!/^\/(projects|project\/[a-f0-9-]{36})$/i.test(job.source_path)) throw new Error('invalid_operation');
+    const basePath = /^\/(projects|project\/[a-f0-9-]{36})$/i.test(job.source_path);
+    const mediaPath = job.rpc_id === 'as29s' && /^\/project\/[a-f0-9-]{36}\/edit\/[a-f0-9-]{36}$/i.test(job.source_path);
+    if (!basePath && !mediaPath) throw new Error('invalid_operation');
     const html = document.documentElement.innerHTML;
     const bl = String(wiz.cfb2h || html.match(/boq_labs-ai-sandbox-frontend_[A-Za-z0-9_.-]+/)?.[0] || '');
     const sid = String(wiz.FdrFJe || '');

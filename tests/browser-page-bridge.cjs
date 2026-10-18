@@ -265,3 +265,17 @@ test('startup capture is declared before page scripts in the main world on Flow 
   assert.deepEqual(script.matches,['https://flow.google.com/*']);assert.deepEqual(script.js,['page-captcha.js']);
   assert.equal(script.world,'MAIN');assert.equal(script.run_at,'document_start');
 });
+
+
+test('video media lookup accepts its exact editor route without opening other RPC editor routes', async () => {
+ const project='22222222-2222-2222-2222-222222222222', media='33333333-3333-3333-3333-333333333333'
+ const f=fixture()
+ const lookup={...f.job,rpc_id:'as29s',argument:[media],source_path:`/project/${project}/edit/${media}`}
+ assert.equal((await f.run(lookup)).success,true)
+ assert.equal(f.calls.length,1)
+ assert.equal(new URL(f.calls[0].url,'https://flow.google.com').searchParams.get('source-path'),lookup.source_path)
+ for(const change of [{rpc_id:'eb1hJf'},{source_path:`/project/${project}/edit/not-a-uuid`},{source_path:`/project/${project}/edit/${media}/extra`},{source_path:'https://attacker.example/edit'}]) {
+  assert.equal((await f.run({...lookup,...change})).error_code,'invalid_operation')
+ }
+ assert.equal(f.calls.length,1)
+})

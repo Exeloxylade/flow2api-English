@@ -56,7 +56,7 @@ class BrowserBridge:
         try:
             await socket.send_json({
                 "type": "request", "req_id": req_id, "operation": operation,
-                "email": email, **payload,
+                "email": email, "timeout_ms": max(250, int(timeout * 1000)), **payload,
             })
             response = await asyncio.wait_for(future, timeout=timeout)
             if not response.get("success"):
@@ -64,6 +64,7 @@ class BrowserBridge:
                 code = response.get("error_code")
                 messages = {
                     "account_mismatch": "The paired Flow tab is signed in to a different account. Open the matching account's tab.",
+                    "request_timeout": "The paired Flow tab request timed out. Its outcome is unknown; check the existing Flow task before retrying. Reload an unresponsive Flow tab.",
                     "page_not_ready": "The paired Flow studio is not ready. Open its creative studio and leave the tab open.",
                     "authentication_required": "Google requires sign-in in the paired Flow tab. Sign in there, then retry.",
                     "captcha_native_reload_required": "The Flow page replaced its public CAPTCHA function. Reload the connector extension, then reload this existing Flow tab once so the startup integration can initialize. Pairing is still saved.",

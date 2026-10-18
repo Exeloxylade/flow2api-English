@@ -40,6 +40,22 @@ class BrowserBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn('private browser exception', str(error.exception))
             self.assertFalse(bridge.pending)
 
+    async def test_rpc_budget_and_timeout_message_preserve_unknown_outcome(self):
+        bridge = BrowserBridge()
+        socket = SimpleNamespace(send_json=AsyncMock(), close=AsyncMock())
+        await bridge.attach(1, socket)
+        request = asyncio.create_task(bridge.call(1, 'a@example.com', 'rpc', timeout=10))
+        await asyncio.sleep(0)
+        job = socket.send_json.call_args.args[0]
+        self.assertEqual(job['timeout_ms'], 10000)
+        bridge.receive(socket, {'req_id': job['req_id'], 'success': False,
+                                'error_code': 'request_timeout', 'message': 'private data'})
+        with self.assertRaisesRegex(RuntimeError, 'outcome is unknown') as error:
+            await request
+        self.assertIn('[rpc/request_timeout]', str(error.exception))
+        self.assertNotIn('private data', str(error.exception))
+        self.assertFalse(bridge.pending)
+
     async def test_two_accounts_dispatch_only_to_their_own_socket(self):
         bridge = BrowserBridge()
         a = SimpleNamespace(send_json=AsyncMock(), close=AsyncMock())

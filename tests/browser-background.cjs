@@ -75,3 +75,41 @@ test('an unresponsive old pairing cannot hold up a valid saved account on restar
   assert.equal(sockets.length,1);
   sockets[0].close();
 });
+
+
+test('each request reselects a responsive tab for its account and never replays a timed-out submission', async () => {
+ const sockets=[],listeners={},executions=[]
+ const binding={account_id:7,email:'owner@example.com',secret:'a'.repeat(64),tab_id:7,port:8765}
+ let stale=false,hang=false
+ const event=name=>({addListener:fn=>{listeners[name]=fn}})
+ class Socket {
+  static OPEN=1
+  constructor(){this.readyState=1;this.sent=[];sockets.push(this);queueMicrotask(()=>this.onopen())}
+  send(text){const v=JSON.parse(text);this.sent.push(v);if(v.secret)queueMicrotask(()=>this.onmessage({data:JSON.stringify({type:'ready'})}))}
+  close(){this.readyState=3;this.onclose?.()}
+ }
+ const sandbox={WebSocket:Socket,setTimeout:(fn,ms)=>setTimeout(fn,Math.min(ms,40)),clearTimeout,setInterval:()=>1,clearInterval:()=>{},chrome:{
+  runtime:{id:'extension',onMessage:event('message'),onStartup:event('startup')},alarms:{create(){},onAlarm:event('alarm')},
+  storage:{local:{get:async()=>({flowBridgeAccounts:{a:binding}}),set:async()=>{}}},
+  tabs:{query:async()=>[{id:8,active:true}],onRemoved:event('removed'),onUpdated:event('updated')},
+  scripting:{executeScript:options=>{
+   if(!options.args)return Promise.resolve([{result:options.target.tabId===7&&stale?'wrong@example.com':'owner@example.com'}])
+   executions.push(options.target.tabId)
+   return hang?new Promise(()=>{}):Promise.resolve([{result:{success:true,result:{text:'ok'}}}])
+  }}
+ }}
+ const context=vm.createContext(sandbox)
+ sandbox.importScripts=name=>vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),context)
+ vm.runInContext(fs.readFileSync(path.join(root,'background.js'),'utf8'),context)
+ await new Promise(setImmediate);await new Promise(setImmediate)
+ const socket=sockets[0];stale=true
+ await socket.onmessage({data:JSON.stringify({type:'request',req_id:'first',email:binding.email,operation:'rpc',timeout_ms:30000})})
+ assert.deepEqual(executions,[8])
+ assert.equal(socket.sent.at(-1).success,true)
+ hang=true
+ await socket.onmessage({data:JSON.stringify({type:'request',req_id:'second',email:binding.email,operation:'rpc',timeout_ms:30000})})
+ assert.deepEqual(executions,[8,8])
+ assert.equal(socket.sent.at(-1).error_code,'request_timeout')
+ assert.equal(socket.sent.at(-1).req_id,'second')
+ socket.close()
+})

@@ -25,6 +25,27 @@ async function findAccountTab(binding) {
   return null;
 }
 
+async function dispatchBoundRequest(binding, job) {
+  if (job.email !== binding.email) return {success: false, error_code: 'account_mismatch'};
+  let timer, executing = false, expired = false;
+  const budget = Math.max(250, Math.min(115000, (Number(job.timeout_ms) || 120000) - 1000));
+  try {
+    return await Promise.race([
+      (async () => {
+        // A live websocket does not prove its original browser tab is still responsive.
+        const tabId = await findAccountTab(binding);
+        if (expired || !tabId) return {success: false, error_code: 'page_not_ready'};
+        binding.tab_id = tabId;
+        executing = true;
+        const [value] = await chrome.scripting.executeScript({target: {tabId}, world: 'MAIN', func: runFlowOperation, args: [job]});
+        return value?.result || {success: false, error_code: 'page_not_ready'};
+      })(),
+      new Promise(resolve => { timer = setTimeout(() => { expired = true; resolve({success: false, error_code: executing ? 'request_timeout' : 'page_not_ready'}); }, budget); })
+    ]);
+  } catch { return {success: false, error_code: executing ? 'request_timeout' : 'page_not_ready'}; }
+  finally { expired = true; clearTimeout(timer); }
+}
+
 async function connectBinding(binding) {
   const key = `${binding.port}:${binding.account_id}`;
   if (connections.has(key)) return;
@@ -46,12 +67,7 @@ async function connectBinding(binding) {
         resolve(); return;
       }
       if (job.type !== 'request' || typeof job.req_id !== 'string') return;
-      let result = {success: false, error_code: 'page_not_ready'};
-      try {
-        if (job.email !== binding.email) throw new Error('Wrong account');
-        const [value] = await chrome.scripting.executeScript({target: {tabId: binding.tab_id}, world: 'MAIN', func: runFlowOperation, args: [job]});
-        if (value?.result) result = value.result;
-      } catch { /* Browser exceptions may contain sensitive URLs. */ }
+      const result = await dispatchBoundRequest(binding, job);
       if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({...result, req_id: job.req_id}));
     };
     socket.onerror = () => { clearTimeout(timer); reject(new Error('Bridge unavailable')); };

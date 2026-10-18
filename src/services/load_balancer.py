@@ -417,5 +417,14 @@ class LoadBalancer:
             routes = [await self._check_extension_route(token) for token in capability_tokens]
             if all(not ready for ready, _ in routes):
                 return routes[0][1]
+            for token in capability_tokens:
+                if not token.browser_bridge_hash:
+                    continue
+                reason = str(getattr(token, "last_st_refresh_result", "") or "").lower()
+                # Return a fixed diagnosis, never arbitrary page exceptions or session data.
+                if "did not respond in time" in reason or "request_timeout" in reason:
+                    return "The paired Flow tab did not respond during account verification. Reload Flow Account Connector and refresh the signed-in Flow studio. [browser/request_timeout]"
+                if "page_not_ready" in reason:
+                    return "The paired Flow studio was not ready during account verification. Open the creative studio and retry. [browser/page_not_ready]"
 
         return None
