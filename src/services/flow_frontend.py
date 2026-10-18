@@ -279,11 +279,43 @@ class FlowFrontendMixin:
         return None
 
     @classmethod
+    def _frontend_video_record_result(cls, record: Any) -> tuple[str, str]:
+        """Decode the migrated video record, keeping the poster separate from MP4.
+
+        Wire investigation: ffroliva/gflow-cli, docs/superpowers/spikes/
+        2026-09-05-migrated-host-wire-protocol.md.
+        Observed fields: details[8]=[state], media_info[0][8]=video URL.
+        Only this exact record layout assigns meaning to numeric state values.
+        """
+        if not (isinstance(record, list) and len(record) >= 8
+                and cls._is_uuid(record[0]) and cls._is_uuid(record[2])
+                and isinstance(record[5], list) and len(record[5]) > 8
+                and isinstance(record[7], list)):
+            return "", ""
+        state_field = record[5][8]
+        number = state_field[0] if isinstance(state_field, list) and len(state_field) == 1 else None
+        state = {2: "MEDIA_GENERATION_STATUS_ACTIVE", 6: "MEDIA_GENERATION_STATUS_QUEUED",
+                 3: "MEDIA_GENERATION_STATUS_PENDING"}.get(number, "") if type(number) is int else ""
+        # State 3 precedes the downloadable URL by several seconds. Keep polling
+        # until the actual video URL arrives rather than completing with a poster.
+        info = record[7][0] if record[7] else None
+        value = info[8] if isinstance(info, list) and len(info) > 8 else None
+        if isinstance(value, str):
+            parsed = urlparse(value)
+            if parsed.scheme == "https" and parsed.hostname in {"flow-content.google", "storage.googleapis.com"} and not parsed.username and not parsed.password:
+                return value, state
+        return "", state
+
+    @classmethod
     def _find_flow_content_url(cls, value: Any, media_kind: str) -> str:
         if isinstance(value, str):
             marker = f"/{media_kind}/"
             return value if value.startswith("https://") and marker in value else ""
         if isinstance(value, list):
+            if media_kind == "video":
+                url, _ = cls._frontend_video_record_result(value)
+                if url:
+                    return url
             for item in value:
                 url = cls._find_flow_content_url(item, media_kind)
                 if url:
@@ -577,7 +609,8 @@ class FlowFrontendMixin:
             )
             video_url = cls._find_flow_content_url(record, "video")
             error_code = cls._extract_frontend_rpc_error_code(record)
-            explicit_state = cls._extract_frontend_video_state(record)
+            _, wire_state = cls._frontend_video_record_result(record)
+            explicit_state = cls._extract_frontend_video_state(record) or wire_state
             if explicit_state in {"MEDIA_GENERATION_STATUS_CANCELLED", "MEDIA_GENERATION_STATUS_CANCELED"}:
                 error_code = error_code or "VIDEO_CANCELLED"
             if explicit_state == "MEDIA_GENERATION_STATUS_FAILED":

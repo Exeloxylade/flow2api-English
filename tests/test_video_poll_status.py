@@ -143,3 +143,54 @@ class PollLoopTests(unittest.IsolatedAsyncioTestCase):
         with patch("src.services.generation_handler.time.time", return_value=70):
             await handler._update_request_log_progress(state, token_id=9, status_text="video_status_unknown", progress=45)
         self.assertEqual(handler.db.update_request_log.call_args.kwargs["duration"], 60)
+
+
+# Schema fixture transcribed from the primary wire investigation (not user data):
+# https://github.com/ffroliva/gflow-cli/blob/develop/docs/superpowers/spikes/2026-09-05-migrated-host-wire-protocol.md
+SIGNED_VIDEO = "https://flow-content.google/opaque-result?Expires=123&Signature=fixture"
+POSTER = "https://flow-content.google/opaque-poster?Expires=123&Signature=fixture"
+
+def migrated_record(state=3, video=SIGNED_VIDEO, poster=POSTER):
+    details = [None] * 14
+    details[8] = [state]
+    details[10] = poster
+    info = [None] * 17
+    info[8] = video
+    info[12] = "abra_t2v_8s"
+    return [OP, PROJECT, MEDIA, "CAE", None, details, None, [info, [None, None, [8]], [OP]]]
+
+class MigratedVideoWireTests(unittest.IsolatedAsyncioTestCase):
+    async def test_numeric_completion_and_opaque_signed_url_return_video_not_poster(self):
+        client = Client()
+        client._get_video_poll_timeout = lambda: 30
+        client._current_rpc = AsyncMock(side_effect=[migrated_record(video=None), migrated_record()])
+        result = await client.check_video_status("", [operation()], token_id=9)
+        op = result["operations"][0]
+        self.assertEqual(op["status"], "MEDIA_GENERATION_STATUS_SUCCESSFUL")
+        self.assertEqual(op["operation"]["metadata"]["video"]["fifeUrl"], SIGNED_VIDEO)
+        self.assertNotIn(POSTER, json.dumps(result))
+        self.assertEqual(client._current_rpc.await_args.kwargs["rpc_id"], "as29s")
+
+    async def test_completed_state_waits_for_media_url_instead_of_returning_poster(self):
+        client = Client()
+        client._get_video_poll_timeout = lambda: 30
+        client._current_rpc = AsyncMock(return_value=migrated_record(video=None))
+        result = await client.check_video_status("", [operation()])
+        op = result["operations"][0]
+        self.assertEqual(op["status"], "MEDIA_GENERATION_STATUS_PENDING")
+        self.assertNotIn(POSTER, json.dumps(result))
+
+    async def test_wire_enum_is_read_only_at_documented_position(self):
+        for number, expected in [(2, "ACTIVE"), (6, "QUEUED"), (3, "PENDING"), (99, "UNKNOWN")]:
+            result = FlowFrontendMixin._normalize_frontend_video_status(migrated_record(number, video=None), [operation()])
+            self.assertEqual(result["operations"][0]["status"], "MEDIA_GENERATION_STATUS_"+expected)
+        row = migrated_record(video=None)
+        row[5][8] = [7, 19]
+        self.assertEqual(FlowFrontendMixin._frontend_video_record_result(row)[1], "")
+
+    async def test_media_info_urls_require_https_and_expected_media_host(self):
+        for url in ["http://flow-content.google/file", "https://attacker.example/file", "https://flow-content.google.attacker.example/file", "https://user:secret@flow-content.google/file"]:
+            self.assertEqual(FlowFrontendMixin._frontend_video_record_result(migrated_record(video=url))[0], "")
+        row=migrated_record()
+        row[7][0][8]=None
+        self.assertEqual(FlowFrontendMixin._find_flow_content_url(row, "video"), "")

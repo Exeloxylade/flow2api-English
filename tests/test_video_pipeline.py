@@ -13,7 +13,7 @@ PROJECT="22222222-2222-2222-2222-222222222222"
 INPUT="33333333-3333-3333-3333-333333333333"
 OP="11111111-1111-1111-1111-111111111111"
 ASSET="55555555-5555-5555-5555-555555555555"
-VIDEO=f"https://flow-content.google/video/{OP}"
+VIDEO="https://flow-content.google/opaque-generated-clip?Expires=123&Signature=fixture"
 PNG=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6fN8AAAAASUVORK5CYII=")
 
 class VideoPipelineTests(unittest.IsolatedAsyncioTestCase):
@@ -44,7 +44,10 @@ class VideoPipelineTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(job["argument"],[OP])
                         self.assertEqual(job["source_path"],f"/project/{PROJECT}/edit/{ASSET}")
                         lookups+=1
-                        payload=[] if lookups==1 else [OP,PROJECT,ASSET,VIDEO]
+                        details=[None]*14;details[8]=[3]
+                        details[10]="https://flow-content.google/poster?Signature=fixture"
+                        info=[None]*17;info[8]=VIDEO
+                        payload=[] if lookups==1 else [OP,PROJECT,ASSET,"CAE",None,details,None,[info,[None,None,[8]],[OP]]]
                     else:
                         self.fail("Unexpected RPC in video pipeline: "+rpc)
                     return {"text":json.dumps([["wrb.fr",rpc,json.dumps(payload)]])}

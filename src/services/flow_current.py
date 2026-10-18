@@ -249,7 +249,8 @@ class CurrentFlowClientMixin:
                 f"/project/{project_id}/edit/{normalized_name}" if project_id else None
             ),
         )
-        media_url = self._find_media_url(payload)
+        video_url = self._find_flow_content_url(payload, "video")
+        media_url = video_url or self._find_flow_content_url(payload, "image")
         project_id = (
             str(payload[1] or "")
             if isinstance(payload, list) and len(payload) > 1
@@ -259,8 +260,8 @@ class CurrentFlowClientMixin:
             "name": normalized_name,
             "projectId": project_id,
             "video": {
-                "fifeUrl": media_url,
-                "generatedVideo": {"fifeUrl": media_url},
+                "fifeUrl": video_url,
+                "generatedVideo": {"fifeUrl": video_url},
             },
             "image": {"generatedImage": {"fifeUrl": media_url}},
             "frontendRpc": "as29s",
@@ -879,7 +880,7 @@ class CurrentFlowClientMixin:
                 debug_logger.log_warning("[VIDEO POLL] Media lookup did not return a usable video")
                 continue
             video_url = str((media.get("video") or {}).get("fifeUrl") or "").strip()
-            if "/video/" not in video_url:
+            if not video_url:
                 continue
             video_info = dict(video_info or {})
             video_info["fifeUrl"] = video_url
