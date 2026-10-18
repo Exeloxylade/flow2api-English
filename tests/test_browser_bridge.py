@@ -17,7 +17,8 @@ from src.services.token_manager import TokenManager
 
 class BrowserBridgeTests(unittest.IsolatedAsyncioTestCase):
     async def test_captcha_failure_categories_have_safe_actionable_messages(self):
-        for code, expected in [('captcha_script_failed', 'library could not load'),
+        for code, expected in [('captcha_native_reload_required', 'startup integration'),
+                               ('captcha_script_failed', 'library could not load'),
                                ('captcha_script_policy', 'security policy'),
                                ('captcha_library_unavailable', 'public API'),
                                ('captcha_timeout', 'did not finish'),
@@ -137,6 +138,7 @@ class BrowserBridgeTests(unittest.IsolatedAsyncioTestCase):
             names = bundle.namelist()
         self.assertIn('Flow-Account-Connector/background.js', names)
         self.assertIn('Flow-Account-Connector/page-bridge.js', names)
+        self.assertIn('Flow-Account-Connector/page-captcha.js', names)
 
 
 if __name__ == '__main__':

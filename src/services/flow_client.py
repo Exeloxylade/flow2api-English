@@ -5142,6 +5142,9 @@ class _FlowClientBase(FlowFrontendMixin):
             token = (result or {}).get("token")
             if not isinstance(token, str) or not token.strip():
                 raise RuntimeError("The paired Flow tab returned no CAPTCHA token. Check its verification status.")
+            mode = (result or {}).get("execution_mode")
+            safe_mode = mode if isinstance(mode, str) and mode in {"flow_saved_function", "public_api"} else "unknown"
+            debug_logger.log_info(f"[reCAPTCHA] Paired-tab execution mode: {safe_mode}")
             return token, None
         debug_logger.log_info(
             f"[reCAPTCHA] 开始获取 token: method={captcha_method}, project_id={project_id}, action={action}"

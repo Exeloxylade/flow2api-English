@@ -33,3 +33,10 @@ A connected account and a working credit balance do not prove CAPTCHA is availab
 
 
 Connector 1.1.5 loads Google reCAPTCHA with `trustedtypes=true`. This enables Google's own narrow policy for its nested gstatic script. A TrustedScriptURL for the initial enterprise.js URL alone does not make that nested load compatible. No default policy is installed and page security is preserved. Reload the extension after updating its files; pairing is retained. This fixes a loader compatibility defect, but does not guarantee Google accepts a generated token.
+
+
+Connector 1.1.6 aligns paired-tab CAPTCHA execution with the original Flow2API startup capture. Flow can save its own bound `enterprise.execute` function and then replace the public entry point. The connector captures that same bound function at document start, restores `Function.prototype.bind` immediately after capture, and does not change the public method or `Object.assign`.
+
+After this update, reload the extension **and then reload your existing signed-in Flow tab once**. Keep the tab open until the studio loads. Pairing remains saved; no new browser/profile or account reconnection is required. A page loaded before the startup integration cannot retroactively supply the saved function. In that case the connector stops with `captcha_native_reload_required` instead of submitting a token from the known replaced method.
+
+The backend logs `flow_saved_function` or `public_api` as a fixed execution-mode label, never the token. Reference image uploads now accept the server's `UPLOAD_IMAGE` CAPTCHA action. This integration is tested offline; Google's acceptance is not guaranteed by a non-empty token or a passing fixture.

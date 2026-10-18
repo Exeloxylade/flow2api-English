@@ -66,6 +66,7 @@ class BrowserBridge:
                     "account_mismatch": "The paired Flow tab is signed in to a different account. Open the matching account's tab.",
                     "page_not_ready": "The paired Flow studio is not ready. Open its creative studio and leave the tab open.",
                     "authentication_required": "Google requires sign-in in the paired Flow tab. Sign in there, then retry.",
+                    "captcha_native_reload_required": "The Flow page replaced its public CAPTCHA function. Reload the connector extension, then reload this existing Flow tab once so the startup integration can initialize. Pairing is still saved.",
                     "captcha_unavailable": "The paired Flow tab could not provide CAPTCHA. Open the creative studio and retry.",
                     "captcha_script_failed": "Google's CAPTCHA library could not load in the paired Flow tab. Check that tab for blocked scripts or network errors, reload it, then retry. Pairing is still saved.",
                     "captcha_script_policy": "The Flow page's security policy prevented the connector from loading CAPTCHA. Pairing and credits can still work. Re-pairing does not change this policy; use another configured CAPTCHA method or generate directly in Flow.",

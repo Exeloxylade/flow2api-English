@@ -373,7 +373,7 @@ async def connector_download():
     folder = Path(__file__).resolve().parent.parent / 'browser-extension'
     bundle = io.BytesIO()
     with zipfile.ZipFile(bundle, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for name in ('manifest.json', 'popup.html', 'popup.css', 'connector.js', 'popup.js', 'background.js', 'page-bridge.js', 'README.md'):
+        for name in ('manifest.json', 'popup.html', 'popup.css', 'connector.js', 'popup.js', 'background.js', 'page-bridge.js', 'page-captcha.js', 'README.md'):
             archive.write(folder / name, 'Flow-Account-Connector/' + name)
     return Response(bundle.getvalue(), media_type='application/zip', headers={
         'Content-Disposition': 'attachment; filename="Flow-Account-Connector.zip"',

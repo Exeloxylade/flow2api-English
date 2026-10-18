@@ -28,6 +28,14 @@ class CaptchaRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bridge.await_args.args[:3], (7, "owner@example.com", "captcha"))
         self.assertEqual(self.flow._get_captcha_request_context()["method"], "paired_browser")
 
+    async def test_execution_mode_logging_never_echoes_browser_values(self):
+        for mode, expected in [("flow_saved_function", "flow_saved_function"),
+                               ("public_api", "public_api"), (["private-details"], "unknown")]:
+            with patch.object(browser_bridge, "call", AsyncMock(return_value={"token": "private-token", "execution_mode": mode})), patch("src.services.flow_client.debug_logger.log_info") as log:
+                self.assertEqual(await self.flow._get_recaptcha_token("project", token_id=7), ("private-token", None))
+                log.assert_called_with(f"[reCAPTCHA] Paired-tab execution mode: {expected}")
+                self.assertNotIn("private-", str(log.call_args))
+
     async def test_selected_upstream_personal_provider_is_not_skipped_for_paired_account(self):
         config.get_raw_config()["captcha"]["captcha_method_explicit"] = True
         service = types.SimpleNamespace(get_token_bundle=AsyncMock(return_value={

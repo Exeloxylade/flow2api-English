@@ -200,3 +200,68 @@ test('both bootstrap and nested Google script obey Trusted Types without a defau
   assert.equal(result.result.token,'nested-loader-token'); assert.equal(loaded.length,2);
   assert.deepEqual(policies,['flow-account-connector#recaptcha-v2','recaptcha']);
 });
+const captureSource=fs.readFileSync(require('node:path').join(__dirname,'../browser-extension/page-captcha.js'),'utf8');
+
+test('startup integration uses the function Flow saved before public action replacement and restores bind', async () => {
+  const f=fixture(), context=vm.createContext(f.sandbox);
+  vm.runInContext('globalThis.savedBind = Function.prototype.bind; globalThis.savedAssign = Object.assign;',context);
+  vm.runInContext(captureSource,context);
+  vm.runInContext(`
+    window.grecaptcha={enterprise:{ready: cb=>cb(),execute:function(key,options){
+      if(this!==window.grecaptcha.enterprise) throw new Error('lost receiver');
+      window.actualAction=options.action; return Promise.resolve('native-token');
+    }}};
+    window.flowSavedExecute=window.grecaptcha.enterprise.execute.bind(window.grecaptcha.enterprise);
+    window.publicCalls=0;
+    window.grecaptcha.enterprise.execute=function(key,options){
+      window.publicCalls++;
+      return window.flowSavedExecute(key,Object.assign({},options,{action:'extension_hijack_detected'}));
+    };
+    globalThis.bindRestored = Function.prototype.bind === savedBind;
+    globalThis.assignUnchanged = Object.assign === savedAssign;
+  `,context);
+  vm.runInContext(source,context);
+  const result=await context.runFlowOperation(captchaJob);
+  assert.equal(result.result.token,'native-token'); assert.equal(result.result.execution_mode,'flow_saved_function'); assert.equal(context.window.actualAction,'IMAGE_GENERATION');
+  assert.equal(context.window.publicCalls,0); assert.equal(context.bindRestored,true); assert.equal(context.assignUnchanged,true);
+  const captured=context.window.__flowConnectorNativeCaptcha;
+  vm.runInContext(captureSource,context); assert.equal(context.window.__flowConnectorNativeCaptcha,captured);
+  assert.equal(vm.runInContext('Function.prototype.bind === savedBind',context),true);
+});
+
+test('late installation rejects the replaced public method without requesting an unusable token', async () => {
+  const f=fixture(); let calls=0;
+  f.sandbox.window.grecaptcha={enterprise:{ready: cb=>cb(),execute:function(key,options){
+    calls++; return Promise.resolve(Object.assign({},options,{action:'extension_hijack_detected'}));
+  }}};
+  assert.equal((await f.run(captchaJob)).error_code,'captcha_native_reload_required');
+  assert.equal(calls,0); assert.equal(f.calls.length,0);
+});
+
+test('startup integration ignores unrelated binds and never captures an already-replaced method', () => {
+  const context=vm.createContext({window:{},location:{origin:'https://flow.google.com'}});
+  vm.runInContext('globalThis.originalBind=Function.prototype.bind',context);
+  vm.runInContext(captureSource,context);
+  vm.runInContext(`
+    function sum(a,b){return this.base+a+b;}
+    globalThis.sumValue=sum.bind({base:10},2)(3);
+    window.grecaptcha={enterprise:{execute:function(){return 'extension_hijack_detected'}}};
+    window.grecaptcha.enterprise.execute.bind(window.grecaptcha.enterprise);
+  `,context);
+  assert.equal(context.sumValue,15);assert.equal(context.window.__flowConnectorNativeCaptcha,undefined);
+  assert.equal(vm.runInContext('Function.prototype.bind === originalBind',context),false);
+});
+
+test('image reference uploads have an allowed CAPTCHA action', async () => {
+  const f=fixture();let actual;
+  f.sandbox.window.grecaptcha={enterprise:{ready:cb=>cb(),execute:async(_key,options)=>{actual=options.action;return 'upload-token'}}};
+  assert.equal((await f.run({...captchaJob,action:'UPLOAD_IMAGE'})).result.token,'upload-token');assert.equal(actual,'UPLOAD_IMAGE');
+});
+
+test('startup capture is declared before page scripts in the main world on Flow only', () => {
+  const manifest=JSON.parse(fs.readFileSync(require('node:path').join(__dirname,'../browser-extension/manifest.json'),'utf8'));
+  assert.equal(manifest.content_scripts.length,1);
+  const script=manifest.content_scripts[0];
+  assert.deepEqual(script.matches,['https://flow.google.com/*']);assert.deepEqual(script.js,['page-captcha.js']);
+  assert.equal(script.world,'MAIN');assert.equal(script.run_at,'document_start');
+});

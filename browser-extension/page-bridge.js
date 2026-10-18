@@ -7,7 +7,7 @@ async function runFlowOperation(job) {
     if (!email) throw new Error('authentication_required');
     if (email !== String(job.email || '').toLowerCase()) throw new Error('account_mismatch');
     if (job.operation === 'captcha') {
-      if (!['IMAGE_GENERATION', 'VIDEO_GENERATION'].includes(job.action)) throw new Error('invalid_operation');
+      if (!['IMAGE_GENERATION', 'VIDEO_GENERATION', 'UPLOAD_IMAGE'].includes(job.action)) throw new Error('invalid_operation');
       // Credits do not load reCAPTCHA. Bootstrap the normal Google library in
       // this same signed-in tab, without replacing its methods or page hooks.
       let siteKey = '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV';
@@ -22,7 +22,7 @@ async function runFlowOperation(job) {
         const renderedKey = new URL(existing.src, location.href).searchParams.get('render');
         if (renderedKey && /^[A-Za-z0-9_-]{20,100}$/.test(renderedKey)) siteKey = renderedKey;
       }
-      if (typeof window.grecaptcha?.enterprise?.execute !== 'function') {
+      if (typeof window.__flowConnectorNativeCaptcha?.execute !== 'function' && typeof window.grecaptcha?.enterprise?.execute !== 'function') {
         // Share only the loading promise across simultaneous jobs, never tokens.
         if (!window.__flowConnectorCaptchaLoading) {
           window.__flowConnectorCaptchaLoading = new Promise((resolve, reject) => {
@@ -80,9 +80,12 @@ async function runFlowOperation(job) {
         }
         await window.__flowConnectorCaptchaLoading;
       }
-      const api = window.grecaptcha?.enterprise;
+      const captured = window.__flowConnectorNativeCaptcha;
+      const api = captured?.enterprise || window.grecaptcha?.enterprise;
+      const execute = typeof captured?.execute === 'function' ? captured.execute : api?.execute;
+      if (!captured && typeof execute === 'function' && Function.prototype.toString.call(execute).includes('extension_hijack_detected')) throw new Error('captcha_native_reload_required');
       const readyOwner = typeof api?.ready === 'function' ? api : window.grecaptcha;
-      if (typeof api?.execute !== 'function' || typeof readyOwner?.ready !== 'function') throw new Error('captcha_unavailable');
+      if (typeof execute !== 'function' || typeof readyOwner?.ready !== 'function') throw new Error('captcha_unavailable');
       const bounded = (operation, timeout) => new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('captcha_timeout')), timeout);
         Promise.resolve().then(operation).then(resolve, reject).finally(() => clearTimeout(timer));
@@ -94,12 +97,12 @@ async function runFlowOperation(job) {
       }
       let token;
       try {
-        token = await bounded(() => api.execute(siteKey, {action: job.action}), 30000);
+        token = await bounded(() => execute.call(api, siteKey, {action: job.action}), 30000);
       } catch (error) {
         throw new Error(error.message === 'captcha_timeout' ? 'captcha_timeout' : 'captcha_rejected');
       }
       if (typeof token !== 'string' || !token.trim()) throw new Error('captcha_rejected');
-      return {success: true, result: {token}};
+      return {success: true, result: {token, execution_mode: captured ? 'flow_saved_function' : 'public_api'}};
     }
     const allowed = ['jHPbke', 'QI2zvc', 'nzlxg', 'as29s', 'cz8Z4b', 'maseQ', 'ogiZ0b', 'SPrCad', 'jwpduf', 'mrlkwd', 'GN0Bre', 'MZZa6b', 'nprQif', 'eb1hJf', 'fZytfe', 'p0UkFb', 'YhhmEf'];
     if (job.operation !== 'rpc' || !allowed.includes(job.rpc_id) || !Array.isArray(job.argument)) throw new Error('invalid_operation');
@@ -125,7 +128,7 @@ async function runFlowOperation(job) {
     }
     throw new Error('authentication_required');
   } catch (error) {
-    const allowedErrors = ['authentication_required', 'account_mismatch', 'page_not_ready', 'captcha_unavailable', 'captcha_script_failed', 'captcha_script_policy', 'captcha_library_unavailable', 'captcha_timeout', 'captcha_rejected', 'invalid_operation'];
+    const allowedErrors = ['authentication_required', 'account_mismatch', 'page_not_ready', 'captcha_native_reload_required', 'captcha_unavailable', 'captcha_script_failed', 'captcha_script_policy', 'captcha_library_unavailable', 'captcha_timeout', 'captcha_rejected', 'invalid_operation'];
     return {success: false, error_code: allowedErrors.includes(error.message) ? error.message : 'request_failed'};
   }
 }
