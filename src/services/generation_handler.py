@@ -1279,6 +1279,17 @@ def _apply_current_flow_model_catalog():
                     f"Veo 3.1 - {family.title()} I2V · {seconds}s · {orientation}",
                 )
 
+    # Public duration aliases for the existing 8-second first-frame models.
+    # Reuse their full configs instead of guessing upstream keys or access flags.
+    for family, landscape_target, portrait_target in (
+        ("lite", "veo_3_1_i2v_lite_landscape", "veo_3_1_i2v_lite_portrait"),
+        ("fast", "veo_3_1_i2v_s_fast_fl", "veo_3_1_i2v_s_fast_portrait_fl"),
+        ("quality", "veo_3_1_i2v_s_landscape", "veo_3_1_i2v_s_portrait"),
+    ):
+        for orientation, target in (("landscape", landscape_target), ("portrait", portrait_target)):
+            register(f"veo-3.1-{family}-i2v-8s-{orientation}", dict(MODEL_CONFIG[target]),
+                     f"Veo 3.1 - {family.title()} I2V · 8s · {orientation}")
+
     for orientation, ratio, fast_key in (
         ("landscape", landscape, "veo_3_1_r2v_fast_landscape"),
         ("portrait", portrait, "veo_3_1_r2v_fast_portrait"),

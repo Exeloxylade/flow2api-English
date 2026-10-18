@@ -32,6 +32,20 @@ class VeoLiteModelResolverTests(unittest.TestCase):
         self.assertNotIn("veo_3_1_t2v_fast_landscape_4s", listed)
         self.assertIn("veo_3_1_t2v_fast_landscape_4s", MODEL_CONFIG)
 
+    def test_eight_second_i2v_aliases_preserve_existing_configs(self):
+        listed = {item["id"] for item in _get_openai_model_catalog()}
+        for family, targets in {
+            "lite": ("veo_3_1_i2v_lite_landscape", "veo_3_1_i2v_lite_portrait"),
+            "fast": ("veo_3_1_i2v_s_fast_fl", "veo_3_1_i2v_s_fast_portrait_fl"),
+            "quality": ("veo_3_1_i2v_s_landscape", "veo_3_1_i2v_s_portrait"),
+        }.items():
+            for orientation, target in zip(("landscape", "portrait"), targets):
+                alias = f"veo-3.1-{family}-i2v-8s-{orientation}"
+                self.assertIn(alias, listed)
+                self.assertEqual({k: v for k, v in MODEL_CONFIG[alias].items() if k not in {"listed", "display_name"}},
+                                 {k: v for k, v in MODEL_CONFIG[target].items() if k not in {"listed", "display_name"}})
+                self.assertIsNot(MODEL_CONFIG[alias], MODEL_CONFIG[target])
+
     def test_current_aliases_use_live_upstream_keys(self):
         self.assertEqual(
             MODEL_CONFIG["veo-3.1-fast-4s-landscape"]["model_key"],
