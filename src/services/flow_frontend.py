@@ -86,7 +86,29 @@ class FlowFrontendMixin:
                 code = FlowFrontendMixin._extract_frontend_rpc_error_code(item)
                 if code:
                     return code
+        elif isinstance(value, dict):
+            for item in value.values():
+                code = FlowFrontendMixin._extract_frontend_rpc_error_code(item)
+                if code:
+                    return code
         return ""
+
+    @staticmethod
+    def _extract_frontend_video_state(value: Any) -> str:
+        # Unknown numeric protobuf fields are not proof that Google is rendering.
+        if isinstance(value, str):
+            return value if value in {
+                "MEDIA_GENERATION_STATUS_ACTIVE", "MEDIA_GENERATION_STATUS_PENDING",
+                "MEDIA_GENERATION_STATUS_QUEUED", "MEDIA_GENERATION_STATUS_RUNNING",
+                "MEDIA_GENERATION_STATUS_SUCCESSFUL", "MEDIA_GENERATION_STATUS_FAILED",
+                "MEDIA_GENERATION_STATUS_CANCELLED", "MEDIA_GENERATION_STATUS_CANCELED",
+            } else ""
+        items = value.values() if isinstance(value, dict) else value if isinstance(value, (list, tuple)) else []
+        states = [FlowFrontendMixin._extract_frontend_video_state(item) for item in items]
+        for state in ("MEDIA_GENERATION_STATUS_FAILED", "MEDIA_GENERATION_STATUS_CANCELLED", "MEDIA_GENERATION_STATUS_CANCELED", "MEDIA_GENERATION_STATUS_SUCCESSFUL"):
+            if state in states:
+                return state
+        return next((state for state in states if state), "")
 
     @classmethod
     def _raise_batchexecute_error(
@@ -470,10 +492,19 @@ class FlowFrontendMixin:
         aspect_ratio: str,
         model_key: str,
         rpc_id: str = "YhhmEf",
+        input_media_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
+        error_code = cls._extract_frontend_rpc_error_code(payload)
+        state = cls._extract_frontend_video_state(payload)
+        if error_code or state in {"MEDIA_GENERATION_STATUS_FAILED", "MEDIA_GENERATION_STATUS_CANCELLED", "MEDIA_GENERATION_STATUS_CANCELED"}:
+            raise RuntimeError(f"Flow video submission rejected: {error_code or state}")
         records = cls._extract_frontend_video_records(payload, project_id)
+        inputs = set(str(value) for value in input_media_ids or [] if value)
         operations: List[Dict[str, Any]] = []
         for record in records:
+            # Uploaded references are media records too; they are not output video jobs.
+            if str(record[0]) in inputs or str(record[2]) in inputs:
+                continue
             operation_id = str(record[0])
             media_name = (
                 str(record[2])
@@ -527,9 +558,15 @@ class FlowFrontendMixin:
         }
         records = cls._extract_frontend_video_records(payload)
         normalized: List[Dict[str, Any]] = []
+        matched_count = 0
         for record in records:
             operation_id = str(record[0])
-            previous = existing.get(operation_id, {})
+            previous = existing.get(operation_id)
+            if not previous:
+                continue
+            if previous.get("projectId") and record[1] and str(record[1]) != previous["projectId"]:
+                continue
+            matched_count += 1
             previous_operation = (
                 (previous.get("operation") or {}) if isinstance(previous, dict) else {}
             )
@@ -540,10 +577,15 @@ class FlowFrontendMixin:
             )
             video_url = cls._find_flow_content_url(record, "video")
             error_code = cls._extract_frontend_rpc_error_code(record)
-            status = "MEDIA_GENERATION_STATUS_SUCCESSFUL" if video_url else (
-                "MEDIA_GENERATION_STATUS_FAILED"
-                if error_code
-                else "MEDIA_GENERATION_STATUS_ACTIVE"
+            explicit_state = cls._extract_frontend_video_state(record)
+            if explicit_state in {"MEDIA_GENERATION_STATUS_CANCELLED", "MEDIA_GENERATION_STATUS_CANCELED"}:
+                error_code = error_code or "VIDEO_CANCELLED"
+            if explicit_state == "MEDIA_GENERATION_STATUS_FAILED":
+                error_code = error_code or "VIDEO_GENERATION_FAILED"
+            status = (
+                "MEDIA_GENERATION_STATUS_FAILED" if error_code
+                else "MEDIA_GENERATION_STATUS_SUCCESSFUL" if video_url
+                else explicit_state or "MEDIA_GENERATION_STATUS_UNKNOWN"
             )
             metadata = dict(previous_operation.get("metadata") or {})
             video_info = (
@@ -587,11 +629,12 @@ class FlowFrontendMixin:
                         else previous.get("projectId", "")
                     ),
                     "status": status,
-                    "progress": 100 if video_url else 45,
+                    "progress": 100 if status == "MEDIA_GENERATION_STATUS_SUCCESSFUL" else 45,
                     "frontendRpc": "jwpduf",
+                    "statusSource": "unrecognized_status" if status == "MEDIA_GENERATION_STATUS_UNKNOWN" else "status_rpc",
                 }
             )
-        if not normalized:
+        if not normalized and not records:
             error_code = cls._extract_frontend_rpc_error_code(payload)
             if error_code:
                 error_message = f"Flow 上游拒绝视频生成：{error_code}"
@@ -617,7 +660,14 @@ class FlowFrontendMixin:
                             "frontendRpc": "jwpduf",
                         }
                     )
-        return {"operations": normalized or operations, "frontendRpc": "jwpduf"}
+        # Never recycle the submission's ACTIVE status after an unreadable poll.
+        if not normalized:
+            normalized = [{**operation, "status": "MEDIA_GENERATION_STATUS_UNKNOWN", "statusSource": "unrecognized_response"} for operation in operations]
+        return {
+            "operations": normalized, "frontendRpc": "jwpduf",
+            "response_record_count": len(records),
+            "matched_record_count": matched_count,
+        }
 
     async def _load_flow_frontend_bootstrap(
         self,

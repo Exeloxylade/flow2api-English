@@ -1595,7 +1595,7 @@ class GenerationHandler:
         response_state["base_url"] = (base_url_override or "").strip().rstrip(
             "/"
         ) or None
-        request_log_state: Dict[str, Any] = {"id": None, "progress": 0}
+        request_log_state: Dict[str, Any] = {"id": None, "progress": 0, "started_at": start_time}
 
         # 防止并发链路复用到上一次请求的指纹上下文
         if hasattr(self.flow_client, "clear_request_fingerprint"):
@@ -2950,6 +2950,7 @@ class GenerationHandler:
         poll_budget_seconds = max_attempts * poll_interval
         poll_deadline = time.monotonic() + poll_budget_seconds
 
+        last_status = ""
         consecutive_poll_errors = 0
         last_poll_error: Optional[Exception] = None
         max_consecutive_poll_errors = 3
@@ -2983,20 +2984,31 @@ class GenerationHandler:
                     continue
 
                 operation = checked_operations[0]
-                status = operation.get("status")
+                status = str(operation.get("status") or "MEDIA_GENERATION_STATUS_UNKNOWN")
+                last_status = status
 
-                # 状态更新 - 每20秒报告一次 (poll_interval=3秒, 20秒约7次轮询)
-                progress_update_interval = 7  # 每7次轮询 = 21秒
-                if stream and attempt % progress_update_interval == 0:  # 每20秒报告一次
-                    progress = min(int((attempt / max_attempts) * 100), 95)
+                # Report the observable stage and elapsed time, not a synthetic render percentage.
+                if attempt % 7 == 0:
+                    elapsed = max(0, poll_budget_seconds - max(0, poll_deadline - time.monotonic()))
+                    unknown = status == "MEDIA_GENERATION_STATUS_UNKNOWN"
                     await self._update_request_log_progress(
-                        request_log_state,
-                        token_id=token.id,
-                        status_text="video_polling",
-                        progress=max(45, progress),
-                        response_extra={"upstream_status": status},
+                        request_log_state, token_id=token.id,
+                        status_text="video_status_unknown" if unknown else "video_polling",
+                        progress=45,
+                        response_extra={
+                            "upstream_status": status,
+                            "status_source": operation.get("statusSource", "status_rpc"),
+                            "poll_elapsed_seconds": round(elapsed, 1),
+                            "poll_timeout_seconds": round(poll_budget_seconds, 1),
+                            "poll_attempt": attempt + 1,
+                            "response_record_count": result.get("response_record_count"),
+                            "matched_record_count": result.get("matched_record_count"),
+                        },
                     )
-                    yield self._create_stream_chunk(f"生成进度: {progress}%\n")
+                    if stream:
+                        yield self._create_stream_chunk(
+                            f"Video status {'not recognized' if unknown else 'pending'}; waited {int(elapsed)} seconds.\n"
+                        )
 
                 # 检查状态
                 if status == "MEDIA_GENERATION_STATUS_SUCCESSFUL":
@@ -3268,6 +3280,11 @@ class GenerationHandler:
         # 超时
         if last_poll_error is not None:
             error_msg = f"视频状态查询持续失败: {self._normalize_error_message(last_poll_error)}"
+        elif last_status == "MEDIA_GENERATION_STATUS_UNKNOWN":
+            error_msg = (
+                f"Flow video status could not be recognized within {int(poll_budget_seconds)} seconds. "
+                "Check the existing video in the paired Flow tab before retrying; it may still be running."
+            )
         else:
             error_msg = f"视频生成超时 (超过 {int(poll_budget_seconds)} 秒仍未完成)"
         await self._fail_video_task(operations, error_msg)
@@ -3436,7 +3453,7 @@ class GenerationHandler:
                 token_id=token_id,
                 response_body=json.dumps(payload, ensure_ascii=False),
                 status_code=102,
-                duration=0,
+                duration=max(0, now - float(request_log_state.setdefault("started_at", now))),
                 status_text=status_text,
                 progress=safe_progress,
             )

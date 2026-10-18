@@ -600,6 +600,7 @@ class CurrentFlowClientMixin:
                     aspect_ratio=aspect_ratio,
                     model_key=request_model_key,
                     rpc_id=rpc_id,
+                    input_media_ids=[*(reference_media_ids or []), start_media_id, end_media_id, video_media_id],
                 )
             except Exception as error:
                 last_error = error
@@ -839,7 +840,7 @@ class CurrentFlowClientMixin:
         normalized = self._normalize_frontend_video_status(payload, operations)
         checked_operations = normalized.get("operations") or []
         for operation in checked_operations:
-            if "SUCCESSFUL" in str(operation.get("status") or ""):
+            if str(operation.get("status") or "") in {"MEDIA_GENERATION_STATUS_SUCCESSFUL", "MEDIA_GENERATION_STATUS_FAILED"}:
                 continue
             operation_body = operation.get("operation") or {}
             metadata = operation_body.get("metadata") or {}
@@ -868,9 +869,14 @@ class CurrentFlowClientMixin:
                     operation_id=operation_id or None,
                 )
             except Exception as media_error:
-                debug_logger.log_warning(
-                    f"[VIDEO POLL] media fallback failed for {media_name}: {media_error}"
-                )
+                public_error = re.search(r"\bPUBLIC_ERROR_[A-Z_]+\b", str(media_error))
+                if public_error:
+                    code = public_error.group(0)
+                    operation["status"] = "MEDIA_GENERATION_STATUS_FAILED"
+                    operation["statusSource"] = "media_lookup"
+                    operation_body["error"] = {"code": code, "message": f"Flow video result lookup rejected: {code}"}
+                    operation["operation"] = operation_body
+                debug_logger.log_warning("[VIDEO POLL] Media lookup did not return a usable video")
                 continue
             video_url = str((media.get("video") or {}).get("fifeUrl") or "").strip()
             if "/video/" not in video_url:
@@ -884,6 +890,7 @@ class CurrentFlowClientMixin:
             operation_body["metadata"] = metadata
             operation["operation"] = operation_body
             operation["status"] = "MEDIA_GENERATION_STATUS_SUCCESSFUL"
+            operation["statusSource"] = "media_lookup"
             operation["progress"] = 100
         return normalized
 
